@@ -1,7 +1,10 @@
 package common
 
 import (
+	"fmt"
 	"github.com/couchbaselabs/go-couchbase"
+	"io"
+	"os"
 )
 
 // ExcludeStrings will exclude strings in `excludes` from `strs`. preserves the
@@ -134,4 +137,39 @@ func ConnectBucket(cluster, pooln, bucketn string) (*couchbase.Bucket, error) {
 		return nil, err
 	}
 	return bucket, err
+}
+
+// GetKVAddrs gather the list of kvnode-address based on the latest vbmap.
+func GetKVAddrs(cluster, pooln, bucketn string) ([]string, error) {
+	b, err := ConnectBucket(cluster, pooln, bucketn)
+	if err != nil {
+		return nil, err
+	}
+	defer b.Close()
+
+	b.Refresh()
+	m, err := b.GetVBmap(nil)
+	if err != nil {
+		return nil, err
+	}
+
+	kvaddrs := make([]string, 0, len(m))
+	for kvaddr := range m {
+		kvaddrs = append(kvaddrs, kvaddr)
+	}
+	return kvaddrs, nil
+}
+
+func ExitOnStdinClose() {
+	buf := make([]byte, 4)
+	for {
+		_, err := os.Stdin.Read(buf)
+		if err != nil {
+			if err == io.EOF {
+				os.Exit(0)
+			}
+
+			panic(fmt.Sprintf("Stdin: Unexpected error occured ", err))
+		}
+	}
 }

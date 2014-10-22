@@ -30,6 +30,7 @@ func main() {
 	flag.Parse()
 
 	go dumpOnSignalForPlatform()
+	go common.ExitOnStdinClose()
 
 	common.SetLogLevel(*logLevel)
 	if *projector == "" {

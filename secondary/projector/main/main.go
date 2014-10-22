@@ -58,6 +58,8 @@ func main() {
 	} else if options.info {
 		c.SetLogLevel(c.LogLevelInfo)
 	}
+
+	go c.ExitOnStdinClose()
 	projector.NewProjector(cluster, kvaddrs, options.adminport)
 	<-done
 }
