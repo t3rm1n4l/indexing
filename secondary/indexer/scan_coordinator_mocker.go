@@ -17,12 +17,12 @@ func (s *scannerTestHarness) createIndex(name, bucket string, feeder snapshotFee
 	s.indexCount++
 
 	pc := c.NewKeyPartitionContainer()
-	pId := c.PartitionId(1)
+	pId := c.PartitionId(0)
 	endpt := c.Endpoint("localhost:1000")
-	pDef := &c.KeyPartitionDefn{Id: pId, Endpts: []c.Endpoint{endpt}}
-	pc.AddPartition(c.PartitionId(1), pDef)
+	pDef := c.KeyPartitionDefn{Id: pId, Endpts: []c.Endpoint{endpt}}
+	pc.AddPartition(pId, pDef)
 
-	instId := c.IndexInstId(indexCount)
+	instId := c.IndexInstId(s.indexCount)
 	indDefn := c.IndexDefn{Name: name, Bucket: bucket}
 	indInst := c.IndexInst{InstId: instId, Defn: indDefn, Pc: pc}
 	// TODO: Use cmdch to update map
@@ -36,22 +36,24 @@ func (s *scannerTestHarness) createIndex(name, bucket string, feeder snapshotFee
 	snap := &mockSnapshot{feeder: feeder}
 	snapc.Add(Snapshot(snap))
 	slice := &mockSlice{sc: snapc}
-	slId := SliceId(1)
+	slId := SliceId(0)
 	sc.AddSlice(slId, slice)
 	// TODO: Use cmdch to update map
 	s.scanner.indexPartnMap[instId] = partInstMap
 }
 
 func newScannerTestHarness() (*scannerTestHarness, error) {
-	var errMsg Message
-
 	h := new(scannerTestHarness)
 	h.cmdch = make(chan Message)
 	h.msgch = make(chan Message)
-	h.scanner, errMsg = NewScanCoordinator(h.cmdch, h.msgch)
+	si, errMsg := NewScanCoordinator(h.cmdch, h.msgch)
+	h.scanner = si.(*scanCoordinator)
 	if errMsg.GetMsgType() != MSG_SUCCESS {
-		return nil, errMsg.(MsgError).Error().err
+		return nil, (errMsg.(*MsgError)).GetError().cause
 	}
+
+	h.scanner.indexInstMap = make(c.IndexInstMap)
+	h.scanner.indexPartnMap = make(IndexPartnMap)
 
 	return h, nil
 }
