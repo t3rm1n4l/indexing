@@ -67,25 +67,72 @@ type mockSlice struct {
 	err      error
 }
 
-func (s *mockSlice) Id() SliceId                             { return s.id }
-func (s *mockSlice) Name() string                            { return "mockSlice" }
-func (s *mockSlice) Status() SliceStatus                     { return SLICE_STATUS_ACTIVE }
-func (s *mockSlice) IndexInstId() c.IndexInstId              { return s.instId }
-func (s *mockSlice) IndexDefnId() c.IndexDefnId              { return s.indDefId }
-func (s *mockSlice) IsActive() bool                          { return true }
-func (s *mockSlice) SetActive(b bool)                        {}
-func (s *mockSlice) SetStatus(ss SliceStatus)                {}
-func (s *mockSlice) GetSnapshotContainer() SnapshotContainer { return s.sc }
+func (s *mockSlice) Id() SliceId {
+	return s.id
+}
+
+func (s *mockSlice) Name() string {
+	return "mockSlice"
+}
+
+func (s *mockSlice) Status() SliceStatus {
+	return SLICE_STATUS_ACTIVE
+}
+
+func (s *mockSlice) IndexInstId() c.IndexInstId {
+	return s.instId
+}
+
+func (s *mockSlice) IndexDefnId() c.IndexDefnId {
+	return s.indDefId
+}
+
+func (s *mockSlice) IsActive() bool {
+	return true
+}
+
+func (s *mockSlice) SetActive(b bool) {
+}
+
+func (s *mockSlice) SetStatus(ss SliceStatus) {
+}
+
+func (s *mockSlice) GetSnapshotContainer() SnapshotContainer {
+	return s.sc
+}
 
 // index writer interface
-func (s *mockSlice) Insert(k Key, v Value) error  { return s.err }
-func (s *mockSlice) Delete(d []byte) error        { return s.err }
-func (s *mockSlice) Commit() error                { return s.err }
-func (s *mockSlice) Snapshot() (Snapshot, error)  { return s.snap, s.err }
-func (s *mockSlice) Rollback(snap Snapshot) error { return s.err }
-func (s *mockSlice) RollbackToZero() error        { return s.err }
-func (s *mockSlice) Close() error                 { return s.err }
-func (s *mockSlice) Destroy() error               { return s.err }
+func (s *mockSlice) Insert(k Key, v Value) error {
+	return s.err
+}
+
+func (s *mockSlice) Delete(d []byte) error {
+	return s.err
+}
+
+func (s *mockSlice) Commit() error {
+	return s.err
+}
+
+func (s *mockSlice) Snapshot() (Snapshot, error) {
+	return s.snap, s.err
+}
+
+func (s *mockSlice) Rollback(snap Snapshot) error {
+	return s.err
+}
+
+func (s *mockSlice) RollbackToZero() error {
+	return s.err
+}
+
+func (s *mockSlice) Close() error {
+	return s.err
+}
+
+func (s *mockSlice) Destroy() error {
+	return s.err
+}
 
 type mockSnapshot struct {
 	id        SliceId
@@ -118,6 +165,10 @@ func (s *mockSnapshot) Lookup(key Key, stopch StopChannel) (chan Value, chan err
 }
 
 func (s *mockSnapshot) KeySet(stopch StopChannel) (chan Key, chan error) {
+	s.keych = make(chan Key)
+	s.errch = make(chan error)
+	c.Errorf("got a keyset message\n")
+	go s.feeder(s.keych, nil, s.errch)
 	return s.keych, s.errch
 }
 
@@ -136,6 +187,7 @@ func (s *mockSnapshot) KeyRange(low, high Key, inclusion Inclusion,
 
 func (s *mockSnapshot) ValueRange(low, high Key, inclusion Inclusion,
 	stopch StopChannel) (chan Value, chan error, SortOrder) {
+	go s.feeder(nil, s.valch, s.errch)
 	return s.valch, s.errch, s.order
 }
 
@@ -154,11 +206,34 @@ func (s *mockSnapshot) CountRange(low Key, high Key, inclusion Inclusion,
 	return s.count, s.err
 }
 
-func (s *mockSnapshot) Open() error                 { return nil }
-func (s *mockSnapshot) Close() error                { return nil }
-func (s *mockSnapshot) IsOpen() bool                { return true }
-func (s *mockSnapshot) Id() SliceId                 { return s.id }
-func (s *mockSnapshot) IndexInstId() c.IndexInstId  { return s.indInstid }
-func (s *mockSnapshot) IndexDefnId() c.IndexDefnId  { return s.indDefId }
-func (s *mockSnapshot) Timestamp() *c.TsVbuuid      { return s.ts }
-func (s *mockSnapshot) SetTimestamp(ts *c.TsVbuuid) { s.ts = ts }
+func (s *mockSnapshot) Open() error {
+	return nil
+}
+
+func (s *mockSnapshot) Close() error {
+	return nil
+}
+
+func (s *mockSnapshot) IsOpen() bool {
+	return true
+}
+
+func (s *mockSnapshot) Id() SliceId {
+	return s.id
+}
+
+func (s *mockSnapshot) IndexInstId() c.IndexInstId {
+	return s.indInstid
+}
+
+func (s *mockSnapshot) IndexDefnId() c.IndexDefnId {
+	return s.indDefId
+}
+
+func (s *mockSnapshot) Timestamp() *c.TsVbuuid {
+	return s.ts
+}
+
+func (s *mockSnapshot) SetTimestamp(ts *c.TsVbuuid) {
+	s.ts = ts
+}

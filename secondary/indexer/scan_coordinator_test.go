@@ -27,14 +27,15 @@ func keyFeederFn(keych chan Key, valch chan Value, errch chan error) {
 func clientReader(val interface{}) bool {
 	switch v := val.(type) {
 	case *protobuf.ResponseStream:
-		fmt.Println(v)
+		c.Errorf("got response message %v\n", val)
 		count++
 		if count == 10000 {
 			return false
 		}
-
 	case error:
 		fmt.Println("error occured is ", v.(error))
+	default:
+		c.Errorf("something else %v\n", v, val)
 	}
 	return true
 }
@@ -46,8 +47,8 @@ func TestScan(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	h.createIndex("idx", "default2", keyFeederFn)
+	h.createIndex("idx", "default", keyFeederFn)
 
 	client := queryport.NewClient(QUERY_PORT_ADDR, c.SystemConfig)
-	client.ScanAll("idx1", "default", 100, 100, clientReader)
+	client.ScanAll("idx", "default", 1, 40, clientReader)
 }

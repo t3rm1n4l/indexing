@@ -23,6 +23,7 @@ var (
 	ErrUnsupportedRequest = errors.New("Unsupported query request")
 	ErrIndexNotFound      = errors.New("Index not found")
 	ErrNotMyIndex         = errors.New("Index is not held by this node")
+	ErrInternal           = errors.New("Internal server error occured")
 )
 
 // TODO: wednesday
@@ -42,9 +43,9 @@ type statsResponse struct {
 type scanType string
 
 const (
-	STATS   scanType = "stats"
-	SCAN    scanType = "scan"
-	SCANALL scanType = "scanall"
+	queryStats   scanType = "stats"
+	queryScan    scanType = "scan"
+	queryScanAll scanType = "scanall"
 )
 
 type scanParams struct {
@@ -66,6 +67,96 @@ type scanDescriptor struct {
 	stopch StopChannel
 
 	respch chan interface{}
+}
+
+type scanResponseReader struct {
+	sd      *scanDescriptor
+	keysBuf *[]Key
+	bufSize int64
+	done    bool
+}
+
+func newResponseReader(sd *scanDescriptor) *scanResponseReader {
+	r := new(scanResponseReader)
+	r.sd = sd
+	r.keysBuf = new([]Key)
+	r.done = false
+	r.bufSize = 0
+	return r
+}
+
+func (r *scanResponseReader) KeySize(k Key) int64 {
+	return int64(len(k.encoded))
+}
+
+func (r *scanResponseReader) ReadKeyBatch() (keys *[]Key, err error) {
+	var resp interface{}
+	var ok bool
+
+	for !r.done {
+		resp, ok = <-r.sd.respch
+		r.done = !ok
+		if !r.done {
+			switch resp.(type) {
+			case Key:
+				k := resp.(Key)
+				sz := r.KeySize(k)
+				if r.bufSize > 0 && r.bufSize+sz > r.sd.p.pageSize {
+					keys = r.keysBuf
+					r.bufSize = sz
+					r.keysBuf = new([]Key)
+					*r.keysBuf = append(*r.keysBuf, k)
+					return
+				}
+
+				r.bufSize += sz
+				*r.keysBuf = append(*r.keysBuf, k)
+			case error:
+				err = resp.(error)
+				r.done = true
+				return
+			}
+		}
+	}
+
+	keys = r.keysBuf
+	return
+}
+
+func (r *scanResponseReader) ReadStat() (stat statsResponse, err error) {
+	var resp interface{}
+	resp, r.done = <-r.sd.respch
+	if !r.done {
+		switch resp.(type) {
+		case statsResponse:
+			stat = resp.(statsResponse)
+		case error:
+			err = resp.(error)
+		}
+	}
+
+	err = ErrInternal
+	return
+}
+
+func (r *scanResponseReader) HasMore() bool {
+	return !r.done
+}
+
+func (r *scanResponseReader) Done() {
+	r.done = true
+	close(r.sd.stopch)
+
+	// Drain any leftover responses when client requests for graceful
+	// end for streaming responses
+	go func() {
+		for {
+			_, closed := <-r.sd.respch
+			if closed {
+				break
+			}
+		}
+	}()
 }
 
 //TODO
@@ -197,7 +288,7 @@ func (s *scanCoordinator) parseScanParams(
 	switch req.(type) {
 	case *protobuf.StatisticsRequest:
 		r := req.(*protobuf.StatisticsRequest)
-		p.scanType = STATS
+		p.scanType = queryStats
 		p.incl = Inclusion(r.GetSpan().GetRange().GetInclusion())
 		err = fillRanges(
 			r.GetSpan().GetRange().GetLow(),
@@ -207,7 +298,7 @@ func (s *scanCoordinator) parseScanParams(
 		p.bucket = r.GetBucket()
 	case *protobuf.ScanRequest:
 		r := req.(*protobuf.ScanRequest)
-		p.scanType = SCAN
+		p.scanType = queryScan
 		p.incl = Inclusion(r.GetSpan().GetRange().GetInclusion())
 		err = fillRanges(
 			r.GetSpan().GetRange().GetLow(),
@@ -218,7 +309,7 @@ func (s *scanCoordinator) parseScanParams(
 		p.bucket = r.GetBucket()
 		p.pageSize = r.GetPageSize()
 	case *protobuf.ScanAllRequest:
-		p.scanType = SCANALL
+		p.scanType = queryScanAll
 		r := req.(*protobuf.ScanAllRequest)
 		p.limit = r.GetLimit()
 		p.indexName = r.GetIndexName()
@@ -255,7 +346,7 @@ func (s *scanCoordinator) requestHandler(
 
 	indexInst, partnInstMap, err = s.getIndexDS(p.indexName, p.bucket)
 	if err != nil {
-		respch <- s.makeErrResponseMessage(sd, err)
+		respch <- s.makeResponseMessage(sd, err)
 		close(respch)
 		return
 	}
@@ -263,81 +354,84 @@ func (s *scanCoordinator) requestHandler(
 	partnDefs := s.findPartitionDefsForScan(sd, indexInst)
 	go s.scanPartitions(sd, partnDefs, partnInstMap)
 
-	var respMsg interface{}
-	var done bool = false
-
-loop:
-	// Read scan entries and send it to the client
-	// Closing respch indicates that we have no more messages to be sent
-	for !done {
-		respMsg, done = s.makeResponseMessage(sd)
-		if done {
-			close(respch)
-			break loop
-		}
-
-		select {
-		case _, ok := <-quitch:
-			if !ok {
-				close(sd.stopch)
-				close(respch)
-				break loop
-			}
-		case respch <- respMsg:
-			continue
-		}
-	}
-
-	// Drain any leftover responses when client requests for graceful
-	// end for streaming responses
-	s.drainResponses(sd)
-}
-
-func (s *scanCoordinator) makeErrResponseMessage(sd *scanDescriptor, err error) (r interface{}) {
-	protoErr := &protobuf.Error{Error: proto.String(err.Error())}
+	rdr := newResponseReader(sd)
 	switch sd.p.scanType {
-	case STATS:
-		r = &protobuf.StatisticsResponse{
-			Err: protoErr,
+	case queryStats:
+		var msg interface{}
+		stat, err := rdr.ReadStat()
+		if err != nil {
+			msg = s.makeResponseMessage(sd, err)
+		} else {
+			msg = s.makeResponseMessage(sd, stat)
 		}
-	case SCAN:
-		fallthrough
-	case SCANALL:
-		r = &protobuf.ResponseStream{
-			Err: protoErr,
-		}
-	}
 
-	return
+		respch <- msg
+		close(respch)
+	case queryScan:
+		fallthrough
+	case queryScanAll:
+		var keys *[]Key
+		var msg interface{}
+
+		// Read scan entries and send it to the client
+		// Closing respch indicates that we have no more messages to be sent
+
+	loop:
+		for rdr.HasMore() {
+			keys, err = rdr.ReadKeyBatch()
+			if err != nil {
+				msg = s.makeResponseMessage(sd, err)
+			} else {
+				msg = s.makeResponseMessage(sd, keys)
+			}
+
+			select {
+			case _, ok := <-quitch:
+				if !ok {
+					rdr.Done()
+					break loop
+				}
+			case respch <- msg:
+				common.Errorf("send message %v\n", msg)
+			}
+		}
+		close(respch)
+	}
 }
 
 // Create a queryport stream response message
 // Perform necessary batching of rows into one message based requested page size
-func (s *scanCoordinator) makeResponseMessage(sd *scanDescriptor) (r interface{}, done bool) {
-	//var size int64
-	//var resp interface{}
+func (s *scanCoordinator) makeResponseMessage(sd *scanDescriptor,
+	payload interface{}) (r interface{}) {
 
-	//for {
-	//resp, done = <-sd.respch
-	//switch resp.(type) {
-	//case Key:
-	//case error:
-	//r = s.makeErrResponseMessage(sd, resp.(error))
-	//case statsResponse:
-	//}
-	//}
-
-	return
-}
-
-func (s *scanCoordinator) drainResponses(sd *scanDescriptor) {
-	for {
-		_, closed := <-sd.respch
-		if closed {
-			break
+	switch payload.(type) {
+	case error:
+		err := payload.(error)
+		protoErr := &protobuf.Error{Error: proto.String(err.Error())}
+		switch sd.p.scanType {
+		case queryStats:
+			r = &protobuf.StatisticsResponse{
+				Err: protoErr,
+			}
+		case queryScan:
+			fallthrough
+		case queryScanAll:
+			r = &protobuf.ResponseStream{
+				Err: protoErr,
+			}
 		}
+	case *[]Key:
+		var entries []*protobuf.IndexEntry
+		keys := *payload.(*[]Key)
+		for _, k := range keys {
+			entry := &protobuf.IndexEntry{
+				EntryKey: k.encoded, PrimaryKey: k.encoded,
+			}
+			entries = append(entries, entry)
+		}
+		r = &protobuf.ResponseStream{Entries: entries}
 	}
-
+	return
 }
 
 // Find and return data structures for the specified index instance
@@ -522,11 +616,11 @@ func (s *scanCoordinator) scanLocalSlice(sd *scanDescriptor,
 // Scan can be stopped anytime by closing the stop channel
 func (s *scanCoordinator) executeLocalScan(sd *scanDescriptor, snap Snapshot, stopch StopChannel) {
 	switch sd.p.scanType {
-	case STATS:
+	case queryStats:
 		s.statsQuery(sd, snap, stopch)
-	case SCAN:
+	case queryScan:
 		s.scanQuery(sd, snap, stopch)
-	case SCANALL:
+	case queryScanAll:
 		s.scanAllQuery(sd, snap, stopch)
 	}
 }
@@ -541,7 +635,7 @@ func (s *scanCoordinator) statsQuery(sd *scanDescriptor, snap Snapshot, stopch S
 }
 
 func (s *scanCoordinator) scanQuery(sd *scanDescriptor, snap Snapshot, stopch StopChannel) {
-	if len(sd.p.keys) == 0 {
+	if len(sd.p.keys) != 0 {
 		//ch, cherr := snap.Lookup(p.keys, stopch)
 	} else {
 		ch, cherr, _ := snap.KeyRange(sd.p.low, sd.p.high, sd.p.incl, stopch)
@@ -557,14 +651,14 @@ func (s *scanCoordinator) scanAllQuery(sd *scanDescriptor, snap Snapshot, stopch
 
 // receiveKeys receives results/errors from snapshot reader and forwards it to
 // the caller till the result channel is closed by the snapshot reader
-func (s *scanCoordinator) receiveKeys(sd *scanDescriptor, chval chan Key, cherr chan error) {
+func (s *scanCoordinator) receiveKeys(sd *scanDescriptor, chkey chan Key, cherr chan error) {
 	ok := true
 	var key Key
 	var err error
 
 	for ok {
 		select {
-		case key, ok = <-chval:
+		case key, ok = <-chkey:
 			if ok {
 				common.Tracef("ScanCoordinator: ScanId %v Received Value %s", sd.scanId, key.String())
 				sd.respch <- key
