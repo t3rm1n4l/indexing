@@ -156,7 +156,7 @@ func (s *Server) handleRequest(
 		conn.SetWriteDeadline(time.Now().Add(timeoutMs))
 		if err := tpkt.Send(conn, resp); err != nil {
 			msg := "%v connection %v response transport failed `%v`\n"
-			c.Debugf(msg, s.logPrefix, raddr, err)
+			c.Errorf(msg, s.logPrefix, raddr, err)
 		}
 	}
 
