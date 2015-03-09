@@ -375,6 +375,11 @@ var SystemConfig = Config{
 		"Index file storage directory",
 		"./",
 	},
+	"indexer.storage_engine": ConfigValue{
+		"memdb",
+		"Index storage engine",
+		"forestdb",
+	},
 	"indexer.numSliceWriters": ConfigValue{
 		1,
 		"Number of Writer Threads for a Slice",
