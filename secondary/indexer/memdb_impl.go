@@ -24,6 +24,10 @@ type memDBSlice struct {
 	ts *c.TsVbuuid
 }
 
+type CallbackKeyReader interface {
+	KeySetCb(func(Key) bool)
+}
+
 type memDBSnapInfo struct {
 	db        memdb.MemDB
 	ts        *c.TsVbuuid
@@ -242,6 +246,20 @@ func (s *memDBSnapshot) Exists(key IndexKey, stopch StopChannel) (bool, error) {
 
 func (s *memDBSnapshot) Lookup(key IndexKey, stopch StopChannel) (chan IndexEntry, chan error) {
 	return nil, nil
+}
+
+func (s *memDBSnapshot) KeySetCb(cb func(Key) bool) {
+	cb2 := func(i memdb.Item) bool {
+		kv := i.(*KV)
+		key, _ := NewKeyFromEncodedBytes(kv.k)
+		return cb(key)
+	}
+
+	nilK := &KV{
+		k: []byte(nil),
+	}
+
+	s.db.AscendGreaterOrEqual(nilK, cb2)
 }
 
 func (s *memDBSnapshot) KeySet(stopch StopChannel) (chan IndexEntry, chan error) {
