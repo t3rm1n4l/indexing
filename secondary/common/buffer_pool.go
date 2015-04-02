@@ -12,7 +12,7 @@ type BytesBufPool struct {
 
 func NewByteBufferPool(size int) *BytesBufPool {
 	newBufFn := func() interface{} {
-		b := make([]byte, 0, size)
+		b := make([]byte, size, size)
 		return &b
 	}
 
