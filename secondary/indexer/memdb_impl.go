@@ -25,7 +25,7 @@ type memDBSlice struct {
 }
 
 type CallbackKeyReader interface {
-	KeySetCb(func(Key) bool)
+	KeySetCb(func([]byte) bool)
 }
 
 type memDBSnapInfo struct {
@@ -248,11 +248,10 @@ func (s *memDBSnapshot) Lookup(key IndexKey, stopch StopChannel) (chan IndexEntr
 	return nil, nil
 }
 
-func (s *memDBSnapshot) KeySetCb(cb func(Key) bool) {
+func (s *memDBSnapshot) KeySetCb(cb func([]byte) bool) {
 	cb2 := func(i memdb.Item) bool {
 		kv := i.(*KV)
-		key, _ := NewKeyFromEncodedBytes(kv.k)
-		return cb(key)
+		return cb(kv.k)
 	}
 
 	nilK := &KV{
