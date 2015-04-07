@@ -96,6 +96,16 @@ func (s *fdbSnapshot) newIndexEntry(b []byte) IndexEntry {
 	return entry
 }
 
+func (s *fdbSnapshot) KeySetCb(cb func([]byte) bool) {
+	it, _ := newFDBSnapshotIterator(s)
+	defer closeIterator(it)
+
+	it.SeekFirst()
+	for ; it.Valid(); it.Next() {
+		cb(it.Key())
+	}
+}
+
 func (s *fdbSnapshot) GetEntriesForKeyRange(low, high IndexKey, inclusion Inclusion,
 	prefixCmp bool, chentry chan IndexEntry, cherr chan error, stopch StopChannel) {
 
