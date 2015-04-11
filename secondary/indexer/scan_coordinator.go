@@ -17,6 +17,7 @@ import (
 	"github.com/couchbase/indexing/secondary/logging"
 	protobuf "github.com/couchbase/indexing/secondary/protobuf/query"
 	"github.com/couchbase/indexing/secondary/queryport"
+	"io"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -595,7 +596,7 @@ func (s *scanCoordinator) parseScanParams(
 // Handle query requests arriving through queryport
 func (s *scanCoordinator) requestHandler(
 	req interface{},
-	respch chan<- interface{},
+	w io.Writer,
 	quitch <-chan interface{}) {
 
 	indexInst, p, err := s.parseScanParams(req)
@@ -604,8 +605,9 @@ func (s *scanCoordinator) requestHandler(
 		panic(err)
 	}
 
-	scanId := atomic.AddUint64(&s.reqCounter, 1)
 	cfg := s.config.Load()
+
+	scanId := atomic.AddUint64(&s.reqCounter, 1)
 	timeout := time.Millisecond * time.Duration(cfg["settings.scan_timeout"].Int())
 	startTime := time.Now()
 	sd := &scanDescriptor{
@@ -616,14 +618,23 @@ func (s *scanCoordinator) requestHandler(
 		timeoutch: time.After(timeout),
 	}
 
+	tmpBuf := make([]byte, 64*1024)
+	sendAndEnd := func(r interface{}) {
+		if r != nil {
+			protobuf.EncodeAndWrite(w, tmpBuf, r)
+		}
+		r = s.makeResponseMessage(sd, nil)
+		protobuf.EncodeAndWrite(w, tmpBuf, r)
+	}
+
 	if err == nil && indexInst.State != common.INDEX_STATE_ACTIVE {
 		err = ErrIndexNotReady
 	}
 
 	if err != nil {
 		logging.Infof("%v: SCAN_REQ: %v, Error (%v)", s.logPrefix, sd, err)
-		respch <- s.makeResponseMessage(sd, err)
-		close(respch)
+		msg := s.makeResponseMessage(sd, err)
+		sendAndEnd(msg)
 		return
 	}
 
@@ -670,9 +681,9 @@ func (s *scanCoordinator) requestHandler(
 		}
 	case error:
 		err := msg.(error)
-		respch <- s.makeResponseMessage(sd, err)
+		msg := s.makeResponseMessage(sd, err)
 		logging.Infof("%v: SCAN_REQ: %v, Error (%v)", s.logPrefix, sd, err)
-		close(respch)
+		sendAndEnd(msg)
 		return
 	}
 
@@ -682,7 +693,7 @@ func (s *scanCoordinator) requestHandler(
 		s.logPrefix, sd.scanId, ScanTStoString(ts))
 	// Index has no scannable snapshot available
 	if snap == nil {
-		close(respch)
+		sendAndEnd(nil)
 		return
 	}
 
@@ -699,9 +710,7 @@ func (s *scanCoordinator) requestHandler(
 			msg = s.makeResponseMessage(sd, stat)
 		}
 
-		respch <- msg
-		close(respch)
-
+		sendAndEnd(msg)
 	case queryCount:
 		var msg interface{}
 		count, err := rdr.ReadCount()
@@ -710,9 +719,7 @@ func (s *scanCoordinator) requestHandler(
 		} else {
 			msg = s.makeResponseMessage(sd, count)
 		}
-
-		respch <- msg
-		close(respch)
+		sendAndEnd(msg)
 
 	case queryScan:
 		fallthrough
@@ -743,6 +750,7 @@ func (s *scanCoordinator) requestHandler(
 				msg = s.makeResponseMessage(sd, rows)
 			}
 
+			protobuf.EncodeAndWrite(w, tmpBuf, msg)
 			// Send protobuf message response to queryport
 			select {
 			case _, ok := <-quitch:
@@ -751,14 +759,17 @@ func (s *scanCoordinator) requestHandler(
 					rdr.Done()
 					break loop
 				}
-			case respch <- msg:
+			default:
 			}
 
 			if err != nil {
 				break loop
 			}
 		}
-		close(respch)
+
+		// End stream
+		sendAndEnd(nil)
+
 		if reqquit {
 			status = "client requested quit"
 		} else if err != nil {
@@ -783,6 +794,8 @@ func (s *scanCoordinator) makeResponseMessage(sd *scanDescriptor,
 	payload interface{}) (r interface{}) {
 
 	switch v := payload.(type) {
+	case nil:
+		r = &protobuf.StreamEndResponse{}
 	case error:
 		err := v
 		protoErr := &protobuf.Error{Error: proto.String(err.Error())}

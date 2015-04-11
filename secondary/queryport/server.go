@@ -17,7 +17,7 @@ import "github.com/couchbase/indexing/secondary/transport"
 // channel, until `quitch` is closed. When there are
 // no more response to post handler shall close `respch`.
 type RequestHandler func(
-	req interface{}, respch chan<- interface{}, quitch <-chan interface{})
+	req interface{}, w io.Writer, quitch <-chan interface{})
 
 // Server handles queryport connections.
 type Server struct {
@@ -134,11 +134,6 @@ func (s *Server) handleConnection(conn net.Conn) {
 	rcvch := make(chan interface{}, s.streamChanSize)
 	go s.doReceive(conn, rcvch)
 
-	// transport buffer for transmission
-	flags := transport.TransportFlag(0).SetProtobuf()
-	tpkt := transport.NewTransportPacket(s.maxPayload, flags)
-	tpkt.SetEncoder(transport.EncodingProtobuf, protobuf.ProtobufEncode)
-
 loop:
 	for {
 		select {
@@ -150,10 +145,9 @@ loop:
 			} else if !ok {
 				break loop
 			}
-			respch := make(chan interface{}, s.streamChanSize)
-			quitch := make(chan interface{}, s.streamChanSize)
-			go s.handleRequest(conn, tpkt, respch, rcvch, quitch)
-			s.callb(req, respch, quitch) // blocking call
+			quitch := make(chan interface{})
+			go s.monitorClient(conn, rcvch, quitch)
+			s.callb(req, conn, quitch) // blocking call
 
 		case <-s.killch:
 			break loop
@@ -161,56 +155,30 @@ loop:
 	}
 }
 
-func (s *Server) handleRequest(
+func (s *Server) monitorClient(
 	conn net.Conn,
-	tpkt *transport.TransportPacket,
-	respch, rcvch <-chan interface{}, quitch chan<- interface{}) {
+	rcvch <-chan interface{},
+	quitch chan<- interface{}) {
 
 	raddr := conn.RemoteAddr()
 
-	//timeoutMs := s.writeDeadline * time.Millisecond
-	transmit := func(resp interface{}) error {
-		//conn.SetWriteDeadline(time.Now().Add(timeoutMs))
-		err := tpkt.Send(conn, resp)
-		if err != nil {
-			format := "%v connection %v response transport failed `%v`\n"
-			logging.Infof(format, s.logPrefix, raddr, err)
-		}
-		return err
-	}
-
 	defer close(quitch)
 
-loop:
-	for { // response loop to stream query results back to client
-		select {
-		case resp, ok := <-respch:
-			if !ok {
-				if err := transmit(&protobuf.StreamEndResponse{}); err == nil {
-					format := "%v protobuf.StreamEndResponse -> %q\n"
-					logging.Infof(format, s.logPrefix, raddr)
-				}
-				break loop
+	select {
+	case req, ok := <-rcvch:
+		if ok {
+			if _, yes := req.(*protobuf.EndStreamRequest); yes {
+				format := "%v connection %s client requested quit"
+				logging.Debugf(format, s.logPrefix, raddr)
+			} else {
+				format := "%v connection %s unknown request %v"
+				logging.Errorf(format, s.logPrefix, raddr, req)
 			}
-			if err := transmit(resp); err != nil {
-				break loop
-			}
-
-		case req, ok := <-rcvch:
-			if _, yes := req.(*protobuf.EndStreamRequest); ok && yes {
-				if err := transmit(&protobuf.StreamEndResponse{}); err == nil {
-					format := "%v protobuf.StreamEndResponse -> %q\n"
-					logging.Infof(format, s.logPrefix, raddr)
-				}
-				break loop
-
-			} else if !ok {
-				break loop
-			}
-
-		case <-s.killch:
-			break loop // close connection
+		} else {
+			format := "%v connection %s client closed connection"
+			logging.Warnf(format, s.logPrefix, raddr)
 		}
+	case <-s.killch:
 	}
 }
 
