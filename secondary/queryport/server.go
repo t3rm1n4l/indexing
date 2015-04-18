@@ -158,8 +158,11 @@ loop:
 			// End response should be only sent after monitor is shutdown
 			// otherwise it could lead to loss of next request coming through
 			// same connection.
-			// TODO (sarath): Make end response packet encoding independent
-			protobuf.EncodeAndWrite(conn, s.pktBuf, &protobuf.StreamEndResponse{})
+
+			err := transport.SendResponseEnd(conn)
+			if err != nil {
+				break loop
+			}
 
 		case <-s.killch:
 			break loop
