@@ -171,7 +171,7 @@ loop:
 
 func (d *IndexScanWriter) Routine() error {
 	var err error
-	var sk, pk []byte
+	var b []byte
 
 	defer func() {
 		// Send error to the client if not client requested cancel.
@@ -183,7 +183,7 @@ func (d *IndexScanWriter) Routine() error {
 
 loop:
 	for {
-		sk, err = d.ReadItem()
+		b, err = d.PeekBlock()
 		switch err {
 		case nil:
 		case p.ErrNoMoreItem:
@@ -193,29 +193,11 @@ loop:
 			break loop
 		}
 
-		pk, err = d.ReadItem()
+		err = d.w.RowBytes(b)
+		d.FlushBlock()
 		if err != nil {
-			return err
+			break loop
 		}
-
-		if err = d.w.Row(pk, sk); err != nil {
-			return err
-		}
-
-		/*
-			TODO(sarath): Use block chunk send protocol
-			Instead of collecting rows and encoding into protobuf,
-			we can send full 16kb block.
-
-				b, err := d.PeekBlock()
-				if err == p.ErrNoMoreItem {
-					d.CloseRead()
-					return nil
-				}
-
-				d.W.RawBytes(b)
-				d.FlushBlock()
-		*/
 	}
 
 	return err

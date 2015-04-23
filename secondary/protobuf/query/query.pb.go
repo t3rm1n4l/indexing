@@ -17,13 +17,12 @@ It has these top-level messages:
 	ScanRequest
 	ScanAllRequest
 	EndStreamRequest
-	ResponseStream
+	ResponseStreamHeader
 	StreamEndResponse
 	CountRequest
 	CountResponse
 	Span
 	Range
-	IndexEntry
 	IndexStatistics
 */
 package protobuf
@@ -88,17 +87,17 @@ func (m *TsConsistency) GetVbuuids() []uint64 {
 
 // Request can be one of the optional field.
 type QueryPayload struct {
-	Version           *uint32             `protobuf:"varint,1,req,name=version" json:"version,omitempty"`
-	StatisticsRequest *StatisticsRequest  `protobuf:"bytes,2,opt,name=statisticsRequest" json:"statisticsRequest,omitempty"`
-	Statistics        *StatisticsResponse `protobuf:"bytes,3,opt,name=statistics" json:"statistics,omitempty"`
-	ScanRequest       *ScanRequest        `protobuf:"bytes,4,opt,name=scanRequest" json:"scanRequest,omitempty"`
-	ScanAllRequest    *ScanAllRequest     `protobuf:"bytes,5,opt,name=scanAllRequest" json:"scanAllRequest,omitempty"`
-	Stream            *ResponseStream     `protobuf:"bytes,6,opt,name=stream" json:"stream,omitempty"`
-	CountRequest      *CountRequest       `protobuf:"bytes,7,opt,name=countRequest" json:"countRequest,omitempty"`
-	CountResponse     *CountResponse      `protobuf:"bytes,8,opt,name=countResponse" json:"countResponse,omitempty"`
-	EndStream         *EndStreamRequest   `protobuf:"bytes,9,opt,name=endStream" json:"endStream,omitempty"`
-	StreamEnd         *StreamEndResponse  `protobuf:"bytes,10,opt,name=streamEnd" json:"streamEnd,omitempty"`
-	XXX_unrecognized  []byte              `json:"-"`
+	Version           *uint32               `protobuf:"varint,1,req,name=version" json:"version,omitempty"`
+	StatisticsRequest *StatisticsRequest    `protobuf:"bytes,2,opt,name=statisticsRequest" json:"statisticsRequest,omitempty"`
+	Statistics        *StatisticsResponse   `protobuf:"bytes,3,opt,name=statistics" json:"statistics,omitempty"`
+	ScanRequest       *ScanRequest          `protobuf:"bytes,4,opt,name=scanRequest" json:"scanRequest,omitempty"`
+	ScanAllRequest    *ScanAllRequest       `protobuf:"bytes,5,opt,name=scanAllRequest" json:"scanAllRequest,omitempty"`
+	Stream            *ResponseStreamHeader `protobuf:"bytes,6,opt,name=stream" json:"stream,omitempty"`
+	CountRequest      *CountRequest         `protobuf:"bytes,7,opt,name=countRequest" json:"countRequest,omitempty"`
+	CountResponse     *CountResponse        `protobuf:"bytes,8,opt,name=countResponse" json:"countResponse,omitempty"`
+	EndStream         *EndStreamRequest     `protobuf:"bytes,9,opt,name=endStream" json:"endStream,omitempty"`
+	StreamEnd         *StreamEndResponse    `protobuf:"bytes,10,opt,name=streamEnd" json:"streamEnd,omitempty"`
+	XXX_unrecognized  []byte                `json:"-"`
 }
 
 func (m *QueryPayload) Reset()         { *m = QueryPayload{} }
@@ -140,7 +139,7 @@ func (m *QueryPayload) GetScanAllRequest() *ScanAllRequest {
 	return nil
 }
 
-func (m *QueryPayload) GetStream() *ResponseStream {
+func (m *QueryPayload) GetStream() *ResponseStreamHeader {
 	if m != nil {
 		return m.Stream
 	}
@@ -331,24 +330,24 @@ func (m *EndStreamRequest) Reset()         { *m = EndStreamRequest{} }
 func (m *EndStreamRequest) String() string { return proto.CompactTextString(m) }
 func (*EndStreamRequest) ProtoMessage()    {}
 
-type ResponseStream struct {
-	IndexEntries     []*IndexEntry `protobuf:"bytes,1,rep,name=indexEntries" json:"indexEntries,omitempty"`
-	Err              *Error        `protobuf:"bytes,2,opt,name=err" json:"err,omitempty"`
-	XXX_unrecognized []byte        `json:"-"`
+type ResponseStreamHeader struct {
+	Len              *uint64 `protobuf:"varint,1,opt,name=len" json:"len,omitempty"`
+	Err              *Error  `protobuf:"bytes,2,opt,name=err" json:"err,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
 }
 
-func (m *ResponseStream) Reset()         { *m = ResponseStream{} }
-func (m *ResponseStream) String() string { return proto.CompactTextString(m) }
-func (*ResponseStream) ProtoMessage()    {}
+func (m *ResponseStreamHeader) Reset()         { *m = ResponseStreamHeader{} }
+func (m *ResponseStreamHeader) String() string { return proto.CompactTextString(m) }
+func (*ResponseStreamHeader) ProtoMessage()    {}
 
-func (m *ResponseStream) GetIndexEntries() []*IndexEntry {
-	if m != nil {
-		return m.IndexEntries
+func (m *ResponseStreamHeader) GetLen() uint64 {
+	if m != nil && m.Len != nil {
+		return *m.Len
 	}
-	return nil
+	return 0
 }
 
-func (m *ResponseStream) GetErr() *Error {
+func (m *ResponseStreamHeader) GetErr() *Error {
 	if m != nil {
 		return m.Err
 	}
@@ -492,30 +491,6 @@ func (m *Range) GetInclusion() uint32 {
 		return *m.Inclusion
 	}
 	return 0
-}
-
-type IndexEntry struct {
-	EntryKey         []byte `protobuf:"bytes,1,opt,name=entryKey" json:"entryKey,omitempty"`
-	PrimaryKey       []byte `protobuf:"bytes,2,req,name=primaryKey" json:"primaryKey,omitempty"`
-	XXX_unrecognized []byte `json:"-"`
-}
-
-func (m *IndexEntry) Reset()         { *m = IndexEntry{} }
-func (m *IndexEntry) String() string { return proto.CompactTextString(m) }
-func (*IndexEntry) ProtoMessage()    {}
-
-func (m *IndexEntry) GetEntryKey() []byte {
-	if m != nil {
-		return m.EntryKey
-	}
-	return nil
-}
-
-func (m *IndexEntry) GetPrimaryKey() []byte {
-	if m != nil {
-		return m.PrimaryKey
-	}
-	return nil
 }
 
 // Statistics of a given index.

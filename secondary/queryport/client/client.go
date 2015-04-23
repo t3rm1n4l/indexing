@@ -5,8 +5,6 @@ import "time"
 
 import "github.com/couchbase/indexing/secondary/logging"
 import "github.com/couchbase/indexing/secondary/common"
-import "code.google.com/p/goprotobuf/proto"
-import protobuf "github.com/couchbase/indexing/secondary/protobuf/query"
 import mclient "github.com/couchbase/indexing/secondary/manager/client"
 
 // TODO:
@@ -398,10 +396,8 @@ func (c *GsiClient) Lookup(
 
 	// check whether the index is present and available.
 	if _, err := c.bridge.IndexState(defnID); err != nil {
-		protoResp := &protobuf.ResponseStream{
-			Err: &protobuf.Error{Error: proto.String(err.Error())},
-		}
-		callb(protoResp)
+		response := newResponseStreamError(err)
+		callb(response)
 		return nil
 	}
 	return c.doScan(defnID, func(qc *GsiScanClient, targetDefnID uint64) (err error) {
@@ -427,10 +423,8 @@ func (c *GsiClient) Range(
 
 	// check whether the index is present and available.
 	if _, err := c.bridge.IndexState(defnID); err != nil {
-		protoResp := &protobuf.ResponseStream{
-			Err: &protobuf.Error{Error: proto.String(err.Error())},
-		}
-		callb(protoResp)
+		response := newResponseStreamError(err)
+		callb(response)
 		return nil
 	}
 	return c.doScan(defnID, func(qc *GsiScanClient, targetDefnID uint64) (err error) {
@@ -456,10 +450,8 @@ func (c *GsiClient) ScanAll(
 
 	// check whether the index is present and available.
 	if _, err := c.bridge.IndexState(defnID); err != nil {
-		protoResp := &protobuf.ResponseStream{
-			Err: &protobuf.Error{Error: proto.String(err.Error())},
-		}
-		callb(protoResp)
+		response := newResponseStreamError(err)
+		callb(response)
 		return nil
 	}
 	return c.doScan(defnID, func(qc *GsiScanClient, targetDefnID uint64) (err error) {

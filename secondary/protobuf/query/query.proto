@@ -15,16 +15,16 @@ message TsConsistency {
 
 // Request can be one of the optional field.
 message QueryPayload {
-    required uint32             version           = 1;
-    optional StatisticsRequest  statisticsRequest = 2;
-    optional StatisticsResponse statistics        = 3;
-    optional ScanRequest        scanRequest       = 4;
-    optional ScanAllRequest     scanAllRequest    = 5;
-    optional ResponseStream     stream            = 6;
-    optional CountRequest       countRequest      = 7;
-    optional CountResponse      countResponse     = 8;
-    optional EndStreamRequest   endStream         = 9;
-    optional StreamEndResponse  streamEnd         = 10;
+    required uint32                   version           = 1;
+    optional StatisticsRequest        statisticsRequest = 2;
+    optional StatisticsResponse       statistics        = 3;
+    optional ScanRequest              scanRequest       = 4;
+    optional ScanAllRequest           scanAllRequest    = 5;
+    optional ResponseStreamHeader     stream            = 6;
+    optional CountRequest             countRequest      = 7;
+    optional CountResponse            countResponse     = 8;
+    optional EndStreamRequest         endStream         = 9;
+    optional StreamEndResponse        streamEnd         = 10;
 }
 
 // Get Index statistics. StatisticsResponse is returned back from indexer.
@@ -60,8 +60,8 @@ message ScanAllRequest {
 message EndStreamRequest {
 }
 
-message ResponseStream {
-    repeated IndexEntry indexEntries = 1;
+message ResponseStreamHeader {
+    optional uint64     len     = 1;
     optional Error      err     = 2;
 }
 
@@ -95,11 +95,6 @@ message Range {
     required bytes  low       = 1;
     required bytes  high      = 2;
     required uint32 inclusion = 3;
-}
-
-message IndexEntry {
-    optional bytes  entryKey   = 1;
-    required bytes  primaryKey = 2;
 }
 
 // Statistics of a given index.

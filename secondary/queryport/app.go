@@ -31,7 +31,7 @@ func requestHandler(
 	killch chan bool, // application is shutting down the server.
 ) {
 
-	var responses []*protobuf.ResponseStream
+	hdr := &protobuf.ResponseStreamHeader{}
 
 	switch req.(type) {
 	case *protobuf.StatisticsRequest:
@@ -44,9 +44,12 @@ func requestHandler(
 
 	buf := make([]byte, 1024, 1024)
 loop:
-	for _, resp := range responses {
+
+	for i := 0; i < 10; i++ {
 		// query storage backend for request
-		protobuf.EncodeAndWrite(conn, buf, resp)
+		protobuf.EncodeAndWrite(conn, buf, hdr)
+		// if hdr.Len > 0, we can send rows with format [2_byte_len][sec_key][2_byte_len][docid]...
+
 		select {
 		case <-quitch:
 			close(killch)

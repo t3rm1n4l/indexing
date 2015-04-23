@@ -10,12 +10,10 @@
 package indexer
 
 import (
-	"code.google.com/p/goprotobuf/proto"
 	"errors"
 	"fmt"
 	"github.com/couchbase/indexing/secondary/common"
 	"github.com/couchbase/indexing/secondary/logging"
-	p "github.com/couchbase/indexing/secondary/pipeline"
 	protobuf "github.com/couchbase/indexing/secondary/protobuf/query"
 	"github.com/couchbase/indexing/secondary/queryport"
 	"net"
@@ -526,43 +524,6 @@ func (s *scanCoordinator) getRequestedIndexSnapshot(r *ScanRequest) (snap IndexS
 	}
 
 	return
-}
-
-func (s *scanCoordinator) respondWithError(conn net.Conn, req *ScanRequest, err error) {
-	var res interface{}
-
-	buf := p.GetBlock()
-	defer p.PutBlock(buf)
-
-	protoErr := &protobuf.Error{Error: proto.String(err.Error())}
-
-	switch req.ScanType {
-	case StatsReq:
-		res = &protobuf.StatisticsResponse{
-			Err: protoErr,
-		}
-	case CountReq:
-		res = &protobuf.CountResponse{
-			Count: proto.Int64(0), Err: protoErr,
-		}
-	case ScanAllReq, ScanReq:
-		res = &protobuf.ResponseStream{
-			Err: protoErr,
-		}
-	}
-
-	err2 := protobuf.EncodeAndWrite(conn, *buf, res)
-	if err2 != nil {
-		err = fmt.Errorf("%s, %s", err, err2)
-		goto finish
-	}
-	err2 = protobuf.EncodeAndWrite(conn, *buf, &protobuf.StreamEndResponse{})
-	if err2 != nil {
-		err = fmt.Errorf("%s, %s", err, err2)
-	}
-
-finish:
-	logging.Errorf("%s RESPONSE Failed with error (%s)", req.LogPrefix, err)
 }
 
 func (s *scanCoordinator) handleError(prefix string, err error) {

@@ -89,6 +89,13 @@ func (b *BlockBufferReader) Init(buf *[]byte) {
 	b.offset = 2
 }
 
+// Assume that len header is not provided in the buffer
+func (b *BlockBufferReader) InitWithLen(buf *[]byte, l int) {
+	b.buf = buf
+	b.len = l
+	b.offset = 0
+}
+
 func (b *BlockBufferReader) Len() int {
 	return b.len
 }

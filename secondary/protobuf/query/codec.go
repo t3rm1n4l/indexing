@@ -46,7 +46,7 @@ func ProtobufEncodeInBuf(payload interface{}, buf []byte) (data []byte, err erro
 	case *CountResponse:
 		pl.CountResponse = val
 
-	case *ResponseStream:
+	case *ResponseStreamHeader:
 		pl.Stream = val
 
 	case *StreamEndResponse:

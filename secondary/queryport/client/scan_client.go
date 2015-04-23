@@ -15,10 +15,12 @@ import "fmt"
 import "io"
 import "net"
 import "time"
+import "bytes"
 import "encoding/json"
 
 import "github.com/couchbase/indexing/secondary/logging"
 import "github.com/couchbase/indexing/secondary/common"
+import p "github.com/couchbase/indexing/secondary/pipeline"
 import protobuf "github.com/couchbase/indexing/secondary/protobuf/query"
 import "github.com/couchbase/indexing/secondary/transport"
 import "code.google.com/p/goprotobuf/proto"
@@ -164,10 +166,13 @@ func (c *GsiScanClient) Lookup(
 		return err
 	}
 
+	buf := p.GetBlock()
+	defer p.PutBlock(buf)
+
 	cont := true
 	for cont {
 		// <--- protobuf.ResponseStream
-		cont, healthy, err = c.streamResponse(conn, pkt, callb)
+		cont, healthy, err = c.streamResponse(conn, pkt, callb, *buf)
 		if err != nil {
 			fmsg := "%v Lookup() response failed `%v`\n"
 			logging.Errorf(fmsg, c.logPrefix, err)
@@ -224,10 +229,13 @@ func (c *GsiScanClient) Range(
 		return err
 	}
 
+	buf := p.GetBlock()
+	defer p.PutBlock(buf)
+
 	cont := true
 	for cont {
 		// <--- protobuf.ResponseStream
-		cont, healthy, err = c.streamResponse(conn, pkt, callb)
+		cont, healthy, err = c.streamResponse(conn, pkt, callb, *buf)
 		if err != nil {
 			fmsg := "%v Range() response failed `%v`\n"
 			logging.Errorf(fmsg, c.logPrefix, err)
@@ -267,10 +275,13 @@ func (c *GsiScanClient) ScanAll(
 		return err
 	}
 
+	buf := p.GetBlock()
+	defer p.PutBlock(buf)
+
 	cont := true
 	for cont {
 		// <--- protobuf.ResponseStream
-		cont, healthy, err = c.streamResponse(conn, pkt, callb)
+		cont, healthy, err = c.streamResponse(conn, pkt, callb, *buf)
 		if err != nil {
 			fmsg := "%v ScanAll() response failed `%v`\n"
 			logging.Errorf(fmsg, c.logPrefix, err)
@@ -414,19 +425,19 @@ func (c *GsiScanClient) sendRequest(
 func (c *GsiScanClient) streamResponse(
 	conn net.Conn,
 	pkt *transport.TransportPacket,
-	callb ResponseHandler) (cont bool, healthy bool, err error) {
+	callb ResponseHandler,
+	buf []byte) (cont bool, healthy bool, err error) {
 
 	var resp interface{}
+	var len int
 	var finish bool
 
 	laddr := conn.LocalAddr()
 	timeoutMs := c.readDeadline * time.Millisecond
 	conn.SetReadDeadline(time.Now().Add(timeoutMs))
 	if resp, err = pkt.Receive(conn); err != nil {
-		resp := &protobuf.ResponseStream{
-			Err: &protobuf.Error{Error: proto.String(err.Error())},
-		}
-		callb(resp) // callback with error
+		response := newResponseStreamError(err)
+		callb(response) // callback with error
 		cont, healthy = false, false
 		if err == io.EOF {
 			err = fmt.Errorf("server closed connection (EOF)")
@@ -435,27 +446,38 @@ func (c *GsiScanClient) streamResponse(
 			logging.Errorf(fmsg, c.logPrefix, laddr, err)
 		}
 
-	} else if resp == nil {
+	} else if resp == nil { // End of stream marker
 		finish = true
 		fmsg := "%v connection %q received StreamEndResponse"
 		logging.Tracef(fmsg, c.logPrefix, laddr)
 		callb(&protobuf.StreamEndResponse{}) // callback most likely return true
 		cont, healthy = false, true
-
-	} else { // End of stream marker
-		streamResp := resp.(*protobuf.ResponseStream)
-		cont = callb(streamResp)
-		healthy = true
+	} else { // Rows
+		hdr := resp.(*protobuf.ResponseStreamHeader)
+		len, err = readRowBytes(hdr, conn, buf)
+		if err == nil {
+			response := newResponseStream(hdr, buf[:len])
+			cont = callb(response)
+			healthy = true
+		} else {
+			response := newResponseStreamError(err)
+			callb(response)
+			fmsg := "%v connection %q response transport failed `%v`\n"
+			logging.Errorf(fmsg, c.logPrefix, laddr, err)
+			cont, healthy = false, false
+		}
 	}
 
 	if cont == false && healthy == true && finish == false {
-		err, healthy = c.closeStream(conn, pkt)
+		err, healthy = c.closeStream(conn, pkt, buf)
 	}
 	return
 }
 
 func (c *GsiScanClient) closeStream(
-	conn net.Conn, pkt *transport.TransportPacket) (err error, healthy bool) {
+	conn net.Conn,
+	pkt *transport.TransportPacket,
+	buf []byte) (err error, healthy bool) {
 
 	var resp interface{}
 	laddr := conn.LocalAddr()
@@ -485,10 +507,85 @@ func (c *GsiScanClient) closeStream(
 			fmsg := "%v connection %q response transport failed `%v`\n"
 			logging.Errorf(fmsg, c.logPrefix, laddr, err)
 			return
-
 		} else if resp == nil { // End of stream marker
 			return
+		} else {
+			hdr := resp.(*protobuf.ResponseStreamHeader)
+			if _, err = readRowBytes(hdr, conn, buf); err != nil {
+				healthy = false
+			}
 		}
 	}
+	return
+}
+
+type responseStream struct {
+	skeys []common.SecondaryKey
+	pkeys [][]byte
+	err   error
+}
+
+func newResponseStreamError(err error) *responseStream {
+	return &responseStream{err: err}
+}
+
+func newResponseStream(hdr *protobuf.ResponseStreamHeader, rowBytes []byte) *responseStream {
+	rs := &responseStream{}
+	if hdr.GetErr() != nil {
+		rs.err = fmt.Errorf(hdr.GetErr().GetError())
+		return rs
+	}
+
+	var rdr p.BlockBufferReader
+	rdr.InitWithLen(&rowBytes, len(rowBytes))
+
+loop:
+	for {
+		secKeyData, err := rdr.Get()
+		if err == p.ErrNoMoreItem {
+			break loop
+		} else if err != nil {
+			rs.err = err
+			break loop
+		}
+		if len(secKeyData) > 0 {
+			skey := make(common.SecondaryKey, 0)
+			dec := json.NewDecoder(bytes.NewBuffer(secKeyData))
+
+			if err := dec.Decode(&skey); err != nil {
+				rs.err = err
+				break loop
+			}
+			rs.skeys = append(rs.skeys, skey)
+		} else {
+			rs.skeys = append(rs.skeys, nil)
+		}
+
+		primKeyData, err := rdr.Get()
+		if err != nil {
+			rs.err = err
+			break loop
+		}
+		rs.pkeys = append(rs.pkeys, primKeyData)
+	}
+
+	return rs
+}
+
+func (rs responseStream) GetEntries() ([]common.SecondaryKey, [][]byte, error) {
+	return rs.skeys, rs.pkeys, nil
+}
+
+func (rs responseStream) Error() error {
+	return rs.err
+}
+
+func readRowBytes(hdr *protobuf.ResponseStreamHeader, conn net.Conn, buf []byte) (l int, err error) {
+	l = int(hdr.GetLen())
+	if len(buf) < int(l) {
+		err = fmt.Errorf("Response buf size %d < %d", len(buf), l)
+		return
+	}
+	_, err = io.ReadFull(conn, buf[:l])
 	return
 }

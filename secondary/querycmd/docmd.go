@@ -176,7 +176,7 @@ func HandleCommand(
 	entries := 0
 	callb := func(res qclient.ResponseReader) bool {
 		if res.Error() != nil {
-			fmt.Fprintln(w, "Error: ", res)
+			fmt.Fprintln(w, "Error: ", res.Error())
 		} else if skeys, pkeys, err := res.GetEntries(); err != nil {
 			fmt.Fprintln(w, "Error: ", err)
 		} else {

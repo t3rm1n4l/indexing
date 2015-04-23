@@ -11,7 +11,6 @@ package indexer
 
 import (
 	"code.google.com/p/goprotobuf/proto"
-	"encoding/binary"
 	p "github.com/couchbase/indexing/secondary/pipeline"
 	protobuf "github.com/couchbase/indexing/secondary/protobuf/query"
 	"net"
@@ -21,18 +20,14 @@ type ScanResponseWriter interface {
 	Error(err error) error
 	Stats(rows, unique uint64, min, max []byte) error
 	Count(count uint64) error
-	RawBytes([]byte) error
-	Row(pk, sk []byte) error
+	RowBytes([]byte) error
 	Done() error
 }
 
 type protoResponseWriter struct {
-	scanType   ScanReqType
-	conn       net.Conn
-	encBuf     *[]byte
-	rowBuf     *[]byte
-	rowEntries []*protobuf.IndexEntry
-	rowSize    int
+	scanType ScanReqType
+	conn     net.Conn
+	encBuf   *[]byte
 }
 
 func NewProtoWriter(t ScanReqType, conn net.Conn) *protoResponseWriter {
@@ -40,23 +35,12 @@ func NewProtoWriter(t ScanReqType, conn net.Conn) *protoResponseWriter {
 		scanType: t,
 		conn:     conn,
 		encBuf:   p.GetBlock(),
-		rowBuf:   p.GetBlock(),
 	}
-}
-
-func (w *protoResponseWriter) writeLen(l int) error {
-	binary.LittleEndian.PutUint16((*w.encBuf)[:2], uint16(l))
-	_, err := w.conn.Write((*w.rowBuf)[:2])
-	return err
 }
 
 func (w *protoResponseWriter) Error(err error) error {
 	var res interface{}
 	protoErr := &protobuf.Error{Error: proto.String(err.Error())}
-
-	// Drop all collected rows
-	w.rowEntries = nil
-	w.rowSize = 0
 
 	switch w.scanType {
 	case StatsReq:
@@ -68,7 +52,7 @@ func (w *protoResponseWriter) Error(err error) error {
 			Count: proto.Int64(0), Err: protoErr,
 		}
 	case ScanAllReq, ScanReq:
-		res = &protobuf.ResponseStream{
+		res = &protobuf.ResponseStreamHeader{
 			Err: protoErr,
 		}
 	}
@@ -97,8 +81,12 @@ func (w *protoResponseWriter) Count(c uint64) error {
 	return protobuf.EncodeAndWrite(w.conn, *w.encBuf, res)
 }
 
-func (w *protoResponseWriter) RawBytes(b []byte) error {
-	err := w.writeLen(len(b))
+func (w *protoResponseWriter) RowBytes(b []byte) error {
+	res := &protobuf.ResponseStreamHeader{
+		Len: proto.Uint64(uint64(len(b))),
+	}
+
+	err := protobuf.EncodeAndWrite(w.conn, *w.encBuf, res)
 	if err != nil {
 		return err
 	}
@@ -107,47 +95,8 @@ func (w *protoResponseWriter) RawBytes(b []byte) error {
 	return err
 }
 
-func (w *protoResponseWriter) Row(pk, sk []byte) error {
-
-	if w.rowSize+len(pk)+len(sk) > len(*w.rowBuf) {
-		res := &protobuf.ResponseStream{IndexEntries: w.rowEntries}
-		err := protobuf.EncodeAndWrite(w.conn, *w.encBuf, res)
-		if err != nil {
-			return err
-		}
-
-		w.rowSize = 0
-		w.rowEntries = nil
-	}
-
-	pkCopy := (*w.rowBuf)[w.rowSize : w.rowSize+len(pk)]
-	w.rowSize += len(pk)
-	skCopy := (*w.rowBuf)[w.rowSize : w.rowSize+len(sk)]
-	w.rowSize += len(sk)
-
-	copy(pkCopy, pk)
-	copy(skCopy, sk)
-	row := &protobuf.IndexEntry{
-		EntryKey:   skCopy,
-		PrimaryKey: pkCopy,
-	}
-
-	w.rowSize += len(sk) + len(pk)
-	w.rowEntries = append(w.rowEntries, row)
-	return nil
-}
-
 func (w *protoResponseWriter) Done() error {
 	defer p.PutBlock(w.encBuf)
-	defer p.PutBlock(w.rowBuf)
-
-	if (w.scanType == ScanReq || w.scanType == ScanAllReq) && w.rowSize > 0 {
-		res := &protobuf.ResponseStream{IndexEntries: w.rowEntries}
-		err := protobuf.EncodeAndWrite(w.conn, *w.encBuf, res)
-		if err != nil {
-			return err
-		}
-	}
 
 	return nil
 }
