@@ -381,7 +381,7 @@ func (c *GsiScanClient) doRequestResponse(req interface{}) (interface{}, error) 
 	timeoutMs := c.readDeadline * time.Millisecond
 	conn.SetReadDeadline(time.Now().Add(timeoutMs))
 	// <--- protobuf.*Response
-	resp, err := pkt.Receive(conn)
+	resp, err := ReceiveResponse(pkt, conn)
 	if err != nil {
 		fmsg := "%v %T response transport failed `%v`\n"
 		logging.Errorf(fmsg, c.logPrefix, req, err)
@@ -391,7 +391,7 @@ func (c *GsiScanClient) doRequestResponse(req interface{}) (interface{}, error) 
 
 	conn.SetReadDeadline(time.Now().Add(timeoutMs))
 	// <--- protobuf.StreamEndResponse (skipped) TODO: knock this off.
-	if endResp, err := pkt.Receive(conn); err != nil {
+	if endResp, err := ReceiveResponse(pkt, conn); err != nil {
 		fmsg := "%v %T response transport failed `%v`\n"
 		logging.Errorf(fmsg, c.logPrefix, req, err)
 		healthy = false
@@ -422,7 +422,7 @@ func (c *GsiScanClient) streamResponse(
 	laddr := conn.LocalAddr()
 	timeoutMs := c.readDeadline * time.Millisecond
 	conn.SetReadDeadline(time.Now().Add(timeoutMs))
-	if resp, err = pkt.Receive(conn); err != nil {
+	if resp, err = ReceiveResponse(pkt, conn); err != nil {
 		resp := &protobuf.ResponseStream{
 			Err: &protobuf.Error{Error: proto.String(err.Error())},
 		}
@@ -475,7 +475,7 @@ func (c *GsiScanClient) closeStream(
 	// flush the connection until stream has ended.
 	for true {
 		conn.SetReadDeadline(time.Now().Add(timeoutMs))
-		resp, err = pkt.Receive(conn)
+		resp, err = ReceiveResponse(pkt, conn)
 		if err != nil {
 			healthy = false
 			if err == io.EOF {
@@ -491,4 +491,17 @@ func (c *GsiScanClient) closeStream(
 		}
 	}
 	return
+}
+
+func ReceiveResponse(pkt *transport.TransportPacket, conn net.Conn) (interface{}, error) {
+	payload, err := pkt.Receive(conn)
+	if err != nil {
+		return nil, err
+	}
+
+	if payload == nil {
+		return nil, nil
+	}
+
+	return protobuf.RequestFromPayload(payload.(*protobuf.QueryPayload))
 }

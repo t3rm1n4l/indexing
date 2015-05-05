@@ -8,9 +8,14 @@ import "io"
 import "sync/atomic"
 
 import "github.com/couchbase/indexing/secondary/logging"
+import proto "code.google.com/p/goprotobuf/proto"
 import c "github.com/couchbase/indexing/secondary/common"
 import protobuf "github.com/couchbase/indexing/secondary/protobuf/query"
 import "github.com/couchbase/indexing/secondary/transport"
+
+var (
+	queryObjPool sync.Pool
+)
 
 // RequestHandler shall interpret the request message
 // from client and post response message(s) on `respch`
@@ -131,13 +136,19 @@ func (s *Server) handleConnection(conn net.Conn) {
 	}()
 
 	// start a receive routine.
-	rcvch := make(chan interface{}, s.streamChanSize)
+	rcvch := make(chan *protobuf.QueryPayload, s.streamChanSize)
 	go s.doReceive(conn, rcvch)
 
 loop:
 	for {
 		select {
-		case req, ok := <-rcvch:
+		case payload, ok := <-rcvch:
+			req, err := protobuf.RequestFromPayload(payload)
+			if err != nil {
+				logging.Errorf("%v connection %v invalid request %v", s.logPrefix, raddr, err)
+				break loop
+			}
+
 			if _, yes := req.(*protobuf.EndStreamRequest); yes { // skip
 				format := "%v connection %q skip protobuf.EndStreamRequest\n"
 				logging.Infof(format, s.logPrefix, raddr)
@@ -149,6 +160,7 @@ loop:
 			mfinch := make(chan bool)
 			go s.monitorClient(conn, rcvch, quitch, mfinch)
 			s.callb(req, conn, quitch) // blocking call
+			freeQueryPayload(payload)
 			// shutdown monitor routine synchronously
 			mfinch <- true
 			<-mfinch
@@ -166,15 +178,17 @@ loop:
 
 func (s *Server) monitorClient(
 	conn net.Conn,
-	rcvch <-chan interface{},
+	rcvch <-chan *protobuf.QueryPayload,
 	quitch chan<- interface{},
 	finch chan bool) {
 
 	raddr := conn.RemoteAddr()
 
 	select {
-	case req, ok := <-rcvch:
+	case payload, ok := <-rcvch:
 		if ok {
+			req, _ := protobuf.RequestFromPayload(payload)
+			defer freeQueryPayload(payload)
 			if _, yes := req.(*protobuf.EndStreamRequest); yes {
 				format := "%v connection %s client requested quit"
 				logging.Debugf(format, s.logPrefix, raddr)
@@ -199,23 +213,19 @@ func (s *Server) monitorClient(
 
 // receive requests from remote, when this function returns
 // the connection is expected to be closed.
-func (s *Server) doReceive(conn net.Conn, rcvch chan<- interface{}) {
+func (s *Server) doReceive(conn net.Conn, rcvch chan<- *protobuf.QueryPayload) {
 	raddr := conn.RemoteAddr()
-
-	// transport buffer for receiving
-	flags := transport.TransportFlag(0).SetProtobuf()
-	rpkt := transport.NewTransportPacket(s.maxPayload, flags)
-	rpkt.SetDecoder(transport.EncodingProtobuf, protobuf.ProtobufDecode)
-
 	logging.Infof("%v connection %q doReceive() ...\n", s.logPrefix, raddr)
 
+	buf := make([]byte, 64*1024)
 loop:
 	for {
 		// TODO: Fix read timeout correctly
 		// timeoutMs := s.readDeadline * time.Millisecond
 		// conn.SetReadDeadline(time.Now().Add(timeoutMs))
 
-		req, err := rpkt.Receive(conn)
+		payload := allocQueryPayload()
+		payload, err := protobuf.ReadAndDecode(conn, buf, payload)
 		// TODO: handle close-connection and don't print error message.
 		if err != nil {
 			if err == io.EOF {
@@ -226,10 +236,34 @@ loop:
 			break loop
 		}
 		select {
-		case rcvch <- req:
+		case rcvch <- payload:
 		case <-s.killch:
 			break loop
 		}
 	}
 	close(rcvch)
+}
+
+func init() {
+	queryObjPool = sync.Pool{
+		New: func() interface{} {
+			x := new(protobuf.QueryPayload)
+			sa := new(protobuf.ScanAllRequest)
+			sa.DefnID = proto.Uint64(0)
+			sa.Limit = proto.Int64(0)
+			sa.Cons = proto.Uint32(0)
+
+			x.ScanAllRequest = sa
+
+			return x
+		},
+	}
+}
+
+func allocQueryPayload() *protobuf.QueryPayload {
+	return queryObjPool.Get().(*protobuf.QueryPayload)
+}
+
+func freeQueryPayload(pl *protobuf.QueryPayload) {
+	queryObjPool.Put(pl)
 }

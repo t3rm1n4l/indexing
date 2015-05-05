@@ -62,11 +62,17 @@ func ProtobufEncodeInBuf(payload interface{}, buf []byte) (data []byte, err erro
 	return
 }
 
-// ProtobufDecode complements ProtobufEncode() API. `data` returned by encode
-// is converted back to protobuf message structure.
 func ProtobufDecode(data []byte) (value interface{}, err error) {
 	pl := &QueryPayload{}
-	if err = proto.Unmarshal(data, pl); err != nil {
+	return ProtobufDecodeFromBuf(data, pl)
+}
+
+// ProtobufDecode complements ProtobufEncode() API. `data` returned by encode
+// is converted back to protobuf message structure.
+func ProtobufDecodeFromBuf(data []byte, pl *QueryPayload) (*QueryPayload, error) {
+	var err error
+	p := proto.NewBuffer(data)
+	if err = p.Unmarshal(pl); err != nil {
 		return nil, err
 	}
 	currVer := ProtobufVersion()
@@ -78,6 +84,10 @@ func ProtobufDecode(data []byte) (value interface{}, err error) {
 		pl = protoMsgConvertor[ver](pl)
 	}
 
+	return pl, nil
+}
+
+func RequestFromPayload(pl *QueryPayload) (interface{}, error) {
 	// request
 	if val := pl.GetStatisticsRequest(); val != nil {
 		return val, nil
