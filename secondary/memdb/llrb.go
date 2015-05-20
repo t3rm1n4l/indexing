@@ -134,54 +134,6 @@ func (t *LLRB) Max() Item {
 	return h.Item
 }
 
-func (t *LLRB) ReplaceOrInsertBulk(items ...Item) {
-	for _, i := range items {
-		t.ReplaceOrInsert(i)
-	}
-}
-
-func (t *LLRB) InsertNoReplaceBulk(items ...Item) {
-	for _, i := range items {
-		t.InsertNoReplace(i)
-	}
-}
-
-// ReplaceOrInsert inserts item into the tree. If an existing
-// element has the same order, it is removed from the tree and returned.
-func (t *LLRB) ReplaceOrInsert(item Item) Item {
-	if item == nil {
-		panic("inserting nil item")
-	}
-	var replaced Item
-	t.root, replaced = t.replaceOrInsert(t.root, item)
-	t.root.Black = true
-	if replaced == nil {
-		t.count++
-	}
-	return replaced
-}
-
-func (t *LLRB) replaceOrInsert(h *Node, item Item) (*Node, Item) {
-	if h == nil {
-		return newNode(item), nil
-	}
-
-	h = walkDownRot23(h)
-
-	var replaced Item
-	if less(item, h.Item) { // BUG
-		h.Left, replaced = t.replaceOrInsert(h.Left, item)
-	} else if less(h.Item, item) {
-		h.Right, replaced = t.replaceOrInsert(h.Right, item)
-	} else {
-		replaced, h.Item = h.Item, item
-	}
-
-	h = walkUpRot23(h)
-
-	return h, replaced
-}
-
 // InsertNoReplace inserts item into the tree. If an existing
 // element has the same order, both elements remain in the tree.
 func (t *LLRB) InsertNoReplace(item Item) {
@@ -211,7 +163,7 @@ func (t *LLRB) insertNoReplace(h *Node, item Item) *Node {
 
 // Rotation driver routines for 2-3 algorithm
 
-func walkDownRot23(h *Node) *Node { return h }
+func walkDownRot23(h *Node) *Node { return copyNode(h) }
 
 func walkUpRot23(h *Node) *Node {
 	if isRed(h.Right) && !isRed(h.Left) {
@@ -223,29 +175,7 @@ func walkUpRot23(h *Node) *Node {
 	}
 
 	if isRed(h.Left) && isRed(h.Right) {
-		flip(h)
-	}
-
-	return h
-}
-
-// Rotation driver routines for 2-3-4 algorithm
-
-func walkDownRot234(h *Node) *Node {
-	if isRed(h.Left) && isRed(h.Right) {
-		flip(h)
-	}
-
-	return h
-}
-
-func walkUpRot234(h *Node) *Node {
-	if isRed(h.Right) && !isRed(h.Left) {
-		h = rotateLeft(h)
-	}
-
-	if isRed(h.Left) && isRed(h.Left.Left) {
-		h = rotateRight(h)
+		h = flip(h)
 	}
 
 	return h
@@ -279,6 +209,7 @@ func deleteMin(h *Node) (*Node, Item) {
 	}
 
 	var deleted Item
+	h = copyNode(h)
 	h.Left, deleted = deleteMin(h.Left)
 
 	return fixUp(h), deleted
@@ -312,6 +243,7 @@ func deleteMax(h *Node) (*Node, Item) {
 		h = moveRedRight(h)
 	}
 	var deleted Item
+	h = copyNode(h)
 	h.Right, deleted = deleteMax(h.Right)
 
 	return fixUp(h), deleted
@@ -336,6 +268,8 @@ func (t *LLRB) delete(h *Node, item Item) (*Node, Item) {
 	if h == nil {
 		return nil, nil
 	}
+
+	h = copyNode(h)
 	if less(item, h.Item) {
 		if h.Left == nil { // item not present. Nothing to delete
 			return h, nil
@@ -376,6 +310,8 @@ func (t *LLRB) delete(h *Node, item Item) (*Node, Item) {
 
 func newNode(item Item) *Node { return &Node{Item: item} }
 
+func copyNode(n *Node) *Node { return &Node{Item: n.Item, Left: n.Left, Right: n.Right, Black: n.Black} }
+
 func isRed(h *Node) bool {
 	if h == nil {
 		return false
@@ -384,10 +320,11 @@ func isRed(h *Node) bool {
 }
 
 func rotateLeft(h *Node) *Node {
-	x := h.Right
+	x := copyNode(h.Right)
 	if x.Black {
 		panic("rotating a black link")
 	}
+	h = copyNode(h)
 	h.Right = x.Left
 	x.Left = h
 	x.Black = h.Black
@@ -396,10 +333,11 @@ func rotateLeft(h *Node) *Node {
 }
 
 func rotateRight(h *Node) *Node {
-	x := h.Left
+	x := copyNode(h.Left)
 	if x.Black {
 		panic("rotating a black link")
 	}
+	h = copyNode(h)
 	h.Left = x.Right
 	x.Right = h
 	x.Black = h.Black
@@ -408,29 +346,34 @@ func rotateRight(h *Node) *Node {
 }
 
 // REQUIRE: Left and Right children must be present
-func flip(h *Node) {
+func flip(h *Node) *Node {
+	h = copyNode(h)
 	h.Black = !h.Black
+	h.Left = copyNode(h)
 	h.Left.Black = !h.Left.Black
+	h.Right = copyNode(h.Right)
 	h.Right.Black = !h.Right.Black
+	return h
 }
 
 // REQUIRE: Left and Right children must be present
 func moveRedLeft(h *Node) *Node {
-	flip(h)
+	h = flip(h)
 	if isRed(h.Right.Left) {
+		h = copyNode(h)
 		h.Right = rotateRight(h.Right)
 		h = rotateLeft(h)
-		flip(h)
+		h = flip(h)
 	}
 	return h
 }
 
 // REQUIRE: Left and Right children must be present
 func moveRedRight(h *Node) *Node {
-	flip(h)
+	h = flip(h)
 	if isRed(h.Left.Left) {
 		h = rotateRight(h)
-		flip(h)
+		h = flip(h)
 	}
 	return h
 }
@@ -445,7 +388,7 @@ func fixUp(h *Node) *Node {
 	}
 
 	if isRed(h.Left) && isRed(h.Right) {
-		flip(h)
+		h = flip(h)
 	}
 
 	return h
@@ -454,7 +397,7 @@ func fixUp(h *Node) *Node {
 func (t *LLRB) Clone() MemDB {
 	t2 := &LLRB{}
 	t2.count = t.count
-	t2.root = clone(t.root)
+	t2.root = t.root
 	return t2
 }
 
