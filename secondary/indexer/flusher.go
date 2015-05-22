@@ -72,11 +72,12 @@ type flusher struct {
 	indexInstMap  common.IndexInstMap
 	indexPartnMap IndexPartnMap
 	config        common.Config
+	stats         *IndexerStats
 }
 
 //NewFlusher returns new instance of flusher
-func NewFlusher(config common.Config) *flusher {
-	return &flusher{config: config}
+func NewFlusher(config common.Config, stats *IndexerStats) *flusher {
+	return &flusher{config: config, stats: stats}
 }
 
 //PersistUptoTS will flush the mutation queue upto the
@@ -257,6 +258,7 @@ func (f *flusher) flushSingleVbucket(q MutationQueue, streamId common.StreamId,
 	ok := true
 	var mut *MutationKeys
 
+	bucketStats := f.stats.buckets[mut.meta.bucket]
 	//Process till supervisor asks to stop on the channel
 	for ok {
 		select {
@@ -267,6 +269,7 @@ func (f *flusher) flushSingleVbucket(q MutationQueue, streamId common.StreamId,
 					continue
 				}
 				f.flushSingleMutation(mut, streamId)
+				bucketStats.mutationQueueSize.Add(-1)
 			}
 		case <-stopch:
 			qstopch <- true
@@ -295,6 +298,7 @@ func (f *flusher) flushSingleVbucketUptoSeqno(q MutationQueue, streamId common.S
 
 	ok := true
 	var mut *MutationKeys
+	bucketStats := f.stats.buckets[bucket]
 
 	//Read till the channel is closed by queue indicating it has sent all the
 	//sequence numbers requested
@@ -308,6 +312,7 @@ func (f *flusher) flushSingleVbucketUptoSeqno(q MutationQueue, streamId common.S
 				}
 				f.flushSingleMutation(mut, streamId)
 				mut.Free()
+				bucketStats.mutationQueueSize.Add(-1)
 			}
 		}
 	}
