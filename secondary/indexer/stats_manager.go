@@ -60,6 +60,7 @@ type IndexStats struct {
 	lastTsTime         stats.Int64Val
 	avgScanLatency     stats.Int64Val
 	avgScanWaitLatency stats.Int64Val
+	numMutationOps     stats.Int64Val
 }
 
 type IndexerStatsHolder struct {
@@ -98,6 +99,7 @@ func (s *IndexStats) Init() {
 	s.flushQueueSize.Init()
 	s.avgScanLatency.Init()
 	s.avgScanWaitLatency.Init()
+	s.numMutationOps.Init()
 }
 
 type IndexerStats struct {
@@ -181,6 +183,7 @@ func (is IndexerStats) MarshalJSON() ([]byte, error) {
 		addStat("flush_queue_size", s.flushQueueSize.Value())
 		addStat("avg_scan_latency", s.avgScanLatency.Value())
 		addStat("avg_scan_wait_latency", s.avgScanWaitLatency.Value())
+		addStat("num_mutation_ops", s.numMutationOps.Value())
 	}
 
 	for _, s := range is.buckets {
