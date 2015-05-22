@@ -37,28 +37,29 @@ func (s *BucketStats) Init() {
 type IndexStats struct {
 	name, bucket string
 
-	scanDuration     stats.Int64Val
-	insertBytes      stats.Int64Val
-	numDocsPending   stats.Int64Val
-	scanWaitDuration stats.Int64Val
-	numDocsIndexed   stats.Int64Val
-	numRequests      stats.Int64Val
-	numRowsReturned  stats.Int64Val
-	diskSize         stats.Int64Val
-	buildProgress    stats.Int64Val
-	numDocsQueued    stats.Int64Val
-	deleteBytes      stats.Int64Val
-	dataSize         stats.Int64Val
-	scanBytesRead    stats.Int64Val
-	getBytes         stats.Int64Val
-	itemsCount       stats.Int64Val
-	numCommits       stats.Int64Val
-	numSnapshots     stats.Int64Val
-	numCompactions   stats.Int64Val
-	flushQueueSize   stats.Int64Val
-
-	avgTsInterval stats.Int64Val
-	lastTsTime    stats.Int64Val
+	scanDuration       stats.Int64Val
+	insertBytes        stats.Int64Val
+	numDocsPending     stats.Int64Val
+	scanWaitDuration   stats.Int64Val
+	numDocsIndexed     stats.Int64Val
+	numRequests        stats.Int64Val
+	numRowsReturned    stats.Int64Val
+	diskSize           stats.Int64Val
+	buildProgress      stats.Int64Val
+	numDocsQueued      stats.Int64Val
+	deleteBytes        stats.Int64Val
+	dataSize           stats.Int64Val
+	scanBytesRead      stats.Int64Val
+	getBytes           stats.Int64Val
+	itemsCount         stats.Int64Val
+	numCommits         stats.Int64Val
+	numSnapshots       stats.Int64Val
+	numCompactions     stats.Int64Val
+	flushQueueSize     stats.Int64Val
+	avgTsInterval      stats.Int64Val
+	lastTsTime         stats.Int64Val
+	avgScanLatency     stats.Int64Val
+	avgScanWaitLatency stats.Int64Val
 }
 
 type IndexerStatsHolder struct {
@@ -95,6 +96,8 @@ func (s *IndexStats) Init() {
 	s.numSnapshots.Init()
 	s.numCompactions.Init()
 	s.flushQueueSize.Init()
+	s.avgScanLatency.Init()
+	s.avgScanWaitLatency.Init()
 }
 
 type IndexerStats struct {
@@ -176,6 +179,8 @@ func (is IndexerStats) MarshalJSON() ([]byte, error) {
 		addStat("num_snapshots", s.numSnapshots.Value())
 		addStat("num_compactions", s.numCompactions.Value())
 		addStat("flush_queue_size", s.flushQueueSize.Value())
+		addStat("avg_scan_latency", s.avgScanLatency.Value())
+		addStat("avg_scan_wait_latency", s.avgScanWaitLatency.Value())
 	}
 
 	for _, s := range is.buckets {

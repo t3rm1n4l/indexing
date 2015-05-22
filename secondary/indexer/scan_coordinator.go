@@ -616,6 +616,11 @@ func (s *scanCoordinator) handleScanRequest(req *ScanRequest, w ScanResponseWrit
 	req.Stats.scanDuration.Add(scanTime.Nanoseconds())
 	req.Stats.scanWaitDuration.Add(waitTime.Nanoseconds())
 
+	last := req.Stats.avgScanLatency.Value()
+	req.Stats.avgScanLatency.Set((last + scanTime.Nanoseconds()) / 2)
+	last = req.Stats.avgScanWaitLatency.Value()
+	req.Stats.avgScanWaitLatency.Set((last + waitTime.Nanoseconds()) / 2)
+
 	logging.LazyVerbose(func() string {
 		var status string
 		if err != nil {
