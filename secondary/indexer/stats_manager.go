@@ -28,10 +28,12 @@ type BucketStats struct {
 	indexCount int
 
 	mutationQueueSize stats.Int64Val
+	numMutations      stats.Int64Val
 }
 
 func (s *BucketStats) Init() {
 	s.mutationQueueSize.Init()
+	s.numMutations.Init()
 }
 
 type IndexStats struct {
@@ -189,6 +191,7 @@ func (is IndexerStats) MarshalJSON() ([]byte, error) {
 	for _, s := range is.buckets {
 		prefix = fmt.Sprintf("%s:", s.bucket)
 		addStat("mutation_queue_size", s.mutationQueueSize.Value())
+		addStat("num_mutations", s.numMutations.Value())
 	}
 
 	return json.Marshal(statsMap)
