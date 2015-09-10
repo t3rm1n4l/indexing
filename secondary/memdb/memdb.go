@@ -32,7 +32,7 @@ const (
 func DefaultConfig() Config {
 	var cfg Config
 	cfg.SetKeyComparator(defaultKeyCmp)
-	cfg.SetFileType(ForestdbFile)
+	cfg.SetFileType(RawdbFile)
 	return cfg
 }
 
@@ -137,11 +137,12 @@ func (w *Writer) Delete(x *Item) (success bool) {
 		}
 	}()
 
-	gotItem := w.Get(x)
-	if gotItem != nil {
+	gotNode := w.GetNode(x)
+	if gotNode != nil {
 		sn := w.getCurrSn()
+		gotItem := gotNode.Item().(*Item)
 		if gotItem.bornSn == sn {
-			success = w.store.Delete(gotItem, w.insCmp, w.buf)
+			success = w.store.DeleteNode(gotNode, w.insCmp, w.buf)
 			return
 		}
 
@@ -153,28 +154,39 @@ func (w *Writer) Delete(x *Item) (success bool) {
 }
 
 func (w *Writer) Get(x *Item) *Item {
-	var curr *Item
+	n := w.GetNode(x)
+	if n != nil {
+		return n.Item().(*Item)
+	}
+	return nil
+}
+
+func (w *Writer) GetNode(x *Item) *skiplist.Node {
+	var curr *skiplist.Node
 	found := w.iter.Seek(x)
 	if !found {
 		return nil
 	}
 
 	// Seek until most recent item for key is found
-	curr = w.iter.Get().(*Item)
+	curr = w.iter.GetNode()
 	for {
 		w.iter.Next()
 		if !w.iter.Valid() {
 			break
 		}
-		next := w.iter.Get().(*Item)
-		if w.iterCmp(next, curr) != 0 {
+		next := w.iter.GetNode()
+		nxtItm := next.Item().(*Item)
+		currItm := curr.Item().(*Item)
+		if w.iterCmp(nxtItm, currItm) != 0 {
 			break
 		}
 
 		curr = next
 	}
 
-	if curr.deadSn != 0 {
+	currItm := curr.Item().(*Item)
+	if currItm.deadSn != 0 {
 		return nil
 	}
 
@@ -207,12 +219,13 @@ func (cfg *Config) SetFileType(t FileType) error {
 }
 
 type MemDB struct {
-	store       *skiplist.Skiplist
-	currSn      uint32
-	snapshots   *skiplist.Skiplist
-	isGCRunning int32
-	lastGCSn    uint32
-	count       int64
+	store        *skiplist.Skiplist
+	currSn       uint32
+	snapshots    *skiplist.Skiplist
+	isGCRunning  int32
+	lastGCSn     uint32
+	leastUnrefSn uint32
+	count        int64
 
 	Config
 }
@@ -241,6 +254,21 @@ func (m *MemDB) Reset() {
 
 func (m *MemDB) getCurrSn() uint32 {
 	return atomic.LoadUint32(&m.currSn)
+}
+
+func (m *MemDB) setLeastUnrefSn() {
+	buf := m.snapshots.MakeBuf()
+	defer m.snapshots.FreeBuf(buf)
+	iter := m.snapshots.NewIterator(CompareSnapshot, buf)
+	iter.SeekFirst()
+	if iter.Valid() {
+		snap := iter.Get().(*Snapshot)
+		atomic.StoreUint32(&m.leastUnrefSn, snap.sn-1)
+	}
+}
+
+func (m *MemDB) getLeastUnrefSn() uint32 {
+	return atomic.LoadUint32(&m.leastUnrefSn)
 }
 
 func (m *MemDB) NewWriter() *Writer {
@@ -302,6 +330,7 @@ func (s *Snapshot) Close() {
 		buf := s.db.snapshots.MakeBuf()
 		defer s.db.snapshots.FreeBuf(buf)
 		s.db.snapshots.Delete(s, CompareSnapshot, buf)
+		s.db.setLeastUnrefSn()
 		if atomic.CompareAndSwapInt32(&s.db.isGCRunning, 0, 1) {
 			go s.db.GC()
 		}
@@ -400,8 +429,8 @@ func (m *MemDB) collectDead(sn uint32) {
 	iter.SeekFirst()
 	for ; iter.Valid(); iter.Next() {
 		itm := iter.Get().(*Item)
-		if itm.deadSn > 0 && itm.deadSn <= sn {
-			m.store.Delete(itm, m.insCmp, buf2)
+		if itm.deadSn > 0 && itm.deadSn <= m.getLeastUnrefSn() {
+			m.store.DeleteNode(iter.GetNode(), m.insCmp, buf2)
 		}
 	}
 }

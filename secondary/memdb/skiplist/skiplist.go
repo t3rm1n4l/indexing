@@ -61,6 +61,10 @@ func (n Node) getLevel() int {
 	return int(len(n.next) - 1)
 }
 
+func (n Node) Item() Item {
+	return n.itm
+}
+
 type NodeRef struct {
 	deleted bool
 	ptr     *Node
@@ -120,7 +124,12 @@ func (s *Skiplist) randomLevel(randFn func() float32) int {
 }
 
 func (s *Skiplist) helpDelete(level int, prev, curr, next *Node) bool {
-	return prev.dcasNext(level, curr, next, false, false)
+	success := prev.dcasNext(level, curr, next, false, false)
+	if success && level == curr.getLevel() {
+		atomic.AddInt64(&s.stats.softDeletes, -1)
+		atomic.AddInt64(&s.stats.levelNodesCount[level], -1)
+	}
+	return success
 }
 
 func (s *Skiplist) findPath(itm Item, cmp CompareFn,
@@ -195,14 +204,9 @@ retry:
 	}
 }
 
-func (s *Skiplist) Delete(itm Item, cmp CompareFn, buf *ActionBuffer) bool {
+func (s *Skiplist) softDelete(delNode *Node) bool {
 	var deleteMarked bool
-	found := s.findPath(itm, cmp, buf)
-	if !found {
-		return false
-	}
 
-	delNode := buf.succs[0]
 	targetLevel := delNode.getLevel()
 	for i := targetLevel; i >= 0; i-- {
 		next, deleted := delNode.getNext(i)
@@ -213,8 +217,26 @@ func (s *Skiplist) Delete(itm Item, cmp CompareFn, buf *ActionBuffer) bool {
 	}
 
 	if deleteMarked {
+		atomic.AddInt64(&s.stats.softDeletes, 1)
+	}
+
+	return deleteMarked
+}
+
+func (s *Skiplist) Delete(itm Item, cmp CompareFn, buf *ActionBuffer) bool {
+	found := s.findPath(itm, cmp, buf)
+	if !found {
+		return false
+	}
+
+	delNode := buf.succs[0]
+	return s.DeleteNode(delNode, cmp, buf)
+}
+
+func (s *Skiplist) DeleteNode(n *Node, cmp CompareFn, buf *ActionBuffer) bool {
+	itm := n.itm
+	if s.softDelete(n) {
 		s.findPath(itm, cmp, buf)
-		atomic.AddInt64(&s.stats.levelNodesCount[delNode.getLevel()], -1)
 		return true
 	}
 
