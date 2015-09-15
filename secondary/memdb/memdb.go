@@ -117,9 +117,12 @@ func defaultKeyCmp(this []byte, that []byte) int {
 //
 //compare item,sn
 type Writer struct {
-	rand *rand.Rand
-	buf  *skiplist.ActionBuffer
-	iter *skiplist.Iterator
+	rand   *rand.Rand
+	buf    *skiplist.ActionBuffer
+	iter   *skiplist.Iterator
+	gchead *skiplist.Node
+	gctail *skiplist.Node
+	next   *Writer
 	*MemDB
 }
 
@@ -147,6 +150,15 @@ func (w *Writer) Delete(x *Item) (success bool) {
 		}
 
 		success = atomic.CompareAndSwapUint32(&gotItem.deadSn, 0, sn)
+		if success {
+			if w.gctail == nil {
+				w.gctail = gotNode
+				w.gchead = w.gctail
+			} else {
+				w.gctail.GClink = gotNode
+				w.gctail = gotNode
+			}
+		}
 		return
 	}
 
@@ -222,20 +234,24 @@ type MemDB struct {
 	store        *skiplist.Skiplist
 	currSn       uint32
 	snapshots    *skiplist.Skiplist
+	gcsnapshots  *skiplist.Skiplist
 	isGCRunning  int32
 	lastGCSn     uint32
 	leastUnrefSn uint32
 	count        int64
+
+	wlist *Writer
 
 	Config
 }
 
 func NewWithConfig(cfg Config) *MemDB {
 	m := &MemDB{
-		store:     skiplist.New(),
-		snapshots: skiplist.New(),
-		currSn:    1,
-		Config:    cfg,
+		store:       skiplist.New(),
+		snapshots:   skiplist.New(),
+		gcsnapshots: skiplist.New(),
+		currSn:      1,
+		Config:      cfg,
 	}
 
 	return m
@@ -274,12 +290,17 @@ func (m *MemDB) getLeastUnrefSn() uint32 {
 func (m *MemDB) NewWriter() *Writer {
 	buf := m.store.MakeBuf()
 
-	return &Writer{
+	w := &Writer{
 		rand:  rand.New(rand.NewSource(int64(rand.Int()))),
 		buf:   buf,
 		iter:  m.store.NewIterator(m.iterCmp, buf),
+		next:  m.wlist,
 		MemDB: m,
 	}
+
+	m.wlist = w
+
+	return w
 }
 
 type Snapshot struct {
@@ -287,6 +308,8 @@ type Snapshot struct {
 	refCount int32
 	db       *MemDB
 	count    int64
+
+	gclist *skiplist.Node
 }
 
 func (s Snapshot) Count() int64 {
@@ -329,7 +352,10 @@ func (s *Snapshot) Close() {
 	if newRefcount == 0 {
 		buf := s.db.snapshots.MakeBuf()
 		defer s.db.snapshots.FreeBuf(buf)
+
+		// Move from live snapshot list to dead list
 		s.db.snapshots.Delete(s, CompareSnapshot, buf)
+		s.db.gcsnapshots.Insert(s, CompareSnapshot, buf)
 		s.db.setLeastUnrefSn()
 		if atomic.CompareAndSwapInt32(&s.db.isGCRunning, 0, 1) {
 			go s.db.GC()
@@ -355,6 +381,24 @@ func (m *MemDB) NewSnapshot() *Snapshot {
 	snap := &Snapshot{db: m, sn: m.getCurrSn(), refCount: 1, count: m.ItemsCount()}
 	m.snapshots.Insert(snap, CompareSnapshot, buf)
 	atomic.AddUint32(&m.currSn, 1)
+
+	// Stitch all local gclists from all writers to create snapshot gclist
+	var head, tail *skiplist.Node
+
+	for next := m.wlist; next != nil; next = next.next {
+		if tail == nil {
+			head = next.gchead
+			tail = next.gctail
+		} else {
+			tail.GClink = next.gchead
+			tail = next.gctail
+			next.gchead = nil
+			next.gctail = nil
+		}
+	}
+
+	snap.gclist = head
+
 	return snap
 }
 
@@ -425,13 +469,17 @@ func (m *MemDB) collectDead(sn uint32) {
 	buf2 := m.snapshots.MakeBuf()
 	defer m.snapshots.FreeBuf(buf1)
 	defer m.snapshots.FreeBuf(buf2)
-	iter := m.store.NewIterator(m.iterCmp, buf1)
+	iter := m.gcsnapshots.NewIterator(CompareSnapshot, buf1)
 	iter.SeekFirst()
 	for ; iter.Valid(); iter.Next() {
-		itm := iter.Get().(*Item)
-		if itm.deadSn > 0 && itm.deadSn <= m.getLeastUnrefSn() {
-			m.store.DeleteNode(iter.GetNode(), m.insCmp, buf2)
+		node := iter.GetNode()
+		sn := node.Item().(*Snapshot)
+
+		for n := sn.gclist; n != nil; n = n.GClink {
+			m.store.DeleteNode(n, m.insCmp, buf2)
 		}
+
+		m.gcsnapshots.DeleteNode(node, CompareSnapshot, buf2)
 	}
 }
 
@@ -439,14 +487,10 @@ func (m *MemDB) GC() {
 	buf := m.snapshots.MakeBuf()
 	defer m.snapshots.FreeBuf(buf)
 
-	iter := m.snapshots.NewIterator(CompareSnapshot, buf)
-	iter.SeekFirst()
-	if iter.Valid() {
-		snap := iter.Get().(*Snapshot)
-		if snap.sn != m.lastGCSn && snap.sn > 1 {
-			m.lastGCSn = snap.sn - 1
-			m.collectDead(m.lastGCSn)
-		}
+	sn := m.getLeastUnrefSn()
+	if sn != m.lastGCSn && sn > 0 {
+		m.lastGCSn = sn
+		m.collectDead(m.lastGCSn)
 	}
 
 	atomic.CompareAndSwapInt32(&m.isGCRunning, 1, 0)
