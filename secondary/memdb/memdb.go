@@ -392,9 +392,9 @@ func (m *MemDB) NewSnapshot() *Snapshot {
 		} else {
 			tail.GClink = next.gchead
 			tail = next.gctail
-			next.gchead = nil
-			next.gctail = nil
 		}
+		next.gchead = nil
+		next.gctail = nil
 	}
 
 	snap.gclist = head
@@ -475,9 +475,18 @@ func (m *MemDB) collectDead(sn uint32) {
 		node := iter.GetNode()
 		sn := node.Item().(*Snapshot)
 
-		for n := sn.gclist; n != nil; n = n.GClink {
-			m.store.DeleteNode(n, m.insCmp, buf2)
+		if sn.sn > m.getLeastUnrefSn() {
+			return
 		}
+
+		go func(n *skiplist.Node) {
+			buf := m.store.MakeBuf()
+			defer m.store.FreeBuf(buf)
+
+			for ; n != nil; n = n.GClink {
+				m.store.DeleteNode(n, m.insCmp, buf)
+			}
+		}(sn.gclist)
 
 		m.gcsnapshots.DeleteNode(node, CompareSnapshot, buf2)
 	}
