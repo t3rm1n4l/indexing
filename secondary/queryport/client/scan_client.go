@@ -26,7 +26,7 @@ import "github.com/golang/protobuf/proto"
 // GsiScanClient for scan operations.
 type GsiScanClient struct {
 	queryport string
-	pool      *connectionPool
+	pool      *connMuxPool
 	// config params
 	maxPayload         int // TODO: what if it exceeds ?
 	readDeadline       time.Duration
@@ -51,9 +51,16 @@ func NewGsiScanClient(queryport string, config common.Config) *GsiScanClient {
 		cpAvailWaitTimeout: t,
 		logPrefix:          fmt.Sprintf("[GsiScanClient:%q]", queryport),
 	}
-	c.pool = newConnectionPool(
-		queryport, c.poolSize, c.poolOverflow, c.maxPayload, c.cpTimeout,
-		c.cpAvailWaitTimeout)
+	var err error
+	c.pool, err = newConnectionMuxPool(queryport, c.poolSize, c.maxPayload)
+	if err != nil {
+		panic(err)
+	}
+	/*
+		c.pool = newConnectionPool(
+			queryport, c.poolSize, c.poolOverflow, c.maxPayload, c.cpTimeout,
+			c.cpAvailWaitTimeout)
+	*/
 	logging.Infof("%v started ...\n", c.logPrefix)
 	return c
 }

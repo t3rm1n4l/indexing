@@ -10,6 +10,7 @@ import "github.com/couchbase/indexing/secondary/logging"
 import c "github.com/couchbase/indexing/secondary/common"
 import protobuf "github.com/couchbase/indexing/secondary/protobuf/query"
 import "github.com/couchbase/indexing/secondary/transport"
+import "github.com/t3rm1n4l/squash"
 
 // RequestHandler shall interpret the request message
 // from client and post response message(s) on `respch`
@@ -32,7 +33,9 @@ type Server struct {
 	writeDeadline  time.Duration
 	streamChanSize int
 	logPrefix      string
-	nConnections   platform.AlignedInt64
+
+	serv         *squash.Server
+	nConnections platform.AlignedInt64
 }
 
 type ServerStats struct {
@@ -55,12 +58,16 @@ func NewServer(
 		logPrefix:      fmt.Sprintf("[Queryport %q]", laddr),
 		nConnections:   platform.NewAlignedInt64(0),
 	}
-	if s.lis, err = net.Listen("tcp", laddr); err != nil {
-		logging.Errorf("%v failed starting %v !!\n", s.logPrefix, err)
-		return nil, err
-	}
 
-	go s.listener()
+	s.serv = squash.NewServer(laddr, s.handleConnection)
+	/*
+		if s.lis, err = net.Listen("tcp", laddr); err != nil {
+			logging.Errorf("%v failed starting %v !!\n", s.logPrefix, err)
+			return nil, err
+		}
+
+		go s.listener()
+	*/
 	logging.Infof("%v started ...\n", s.logPrefix)
 	return s, nil
 }
@@ -73,25 +80,29 @@ func (s *Server) Statistics() ServerStats {
 
 // Close queryport daemon.
 func (s *Server) Close() (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			logging.Errorf("%v Close() crashed: %v\n", s.logPrefix, r)
-			err = fmt.Errorf("%v", r)
-			logging.Errorf("%s", logging.StackTrace())
-		}
-	}()
+	/*
+		defer func() {
+			if r := recover(); r != nil {
+				logging.Errorf("%v Close() crashed: %v\n", s.logPrefix, r)
+				err = fmt.Errorf("%v", r)
+				logging.Errorf("%s", logging.StackTrace())
+			}
+		}()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.lis != nil {
-		s.lis.Close() // close listener daemon
-		s.lis = nil
-		close(s.killch)
-		logging.Infof("%v ... stopped\n", s.logPrefix)
-	}
-	return
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.lis != nil {
+			s.lis.Close() // close listener daemon
+			s.lis = nil
+			close(s.killch)
+			logging.Infof("%v ... stopped\n", s.logPrefix)
+		}
+		return
+	*/
+	return nil
 }
 
+/*
 // go-routine to listen for new connections, if this routine goes down -
 // server is shutdown and reason notified back to application.
 func (s *Server) listener() {
@@ -114,6 +125,7 @@ func (s *Server) listener() {
 		}
 	}
 }
+*/
 
 // handle connection request. connection might be kept open in client's
 // connection pool.
