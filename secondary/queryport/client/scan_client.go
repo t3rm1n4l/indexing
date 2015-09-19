@@ -209,6 +209,7 @@ func (c *GsiScanClient) Range(
 	defer func() { c.pool.Return(connectn, healthy) }()
 
 	conn, pkt := connectn.conn, connectn.pkt
+	logging.Infof("sending %s", conn)
 
 	req := &protobuf.ScanRequest{
 		DefnID: proto.Uint64(defnID),
@@ -314,6 +315,7 @@ func (c *GsiScanClient) ScanAll(
 	defer func() { c.pool.Return(connectn, healthy) }()
 
 	conn, pkt := connectn.conn, connectn.pkt
+	//	logging.Infof("sending %s", conn)
 
 	req := &protobuf.ScanAllRequest{
 		DefnID: proto.Uint64(defnID),
@@ -423,7 +425,8 @@ func (c *GsiScanClient) CountRange(
 }
 
 func (c *GsiScanClient) Close() error {
-	return c.pool.Close()
+	//return c.pool.Close()
+	return nil
 }
 
 func (c *GsiScanClient) doRequestResponse(req interface{}) (interface{}, error) {

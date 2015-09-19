@@ -794,9 +794,7 @@ func (mdb *memdbSlice) Compact() error {
 func (mdb *memdbSlice) Statistics() (StorageStatistics, error) {
 	var sts StorageStatistics
 
-	logging.Infof("memdb main stats\n%s", mdb.mainstore.DumpStats())
 	if !mdb.isPrimary {
-		logging.Infof("memdb back stats\n%s", mdb.backstore.DumpStats())
 	}
 	return sts, nil
 }

@@ -475,6 +475,8 @@ func TestScanAll(t *testing.T) {
 	log.Printf("Length of scanResults = %d", len(scanResults))
 	FailTestIfError(err, "Error in scan", t)
 	err = tv.Validate(docScanResults, scanResults)
+	log.Printf("second")
+	secondaryindex.ScanAll(index1, bucketName, indexScanAddress, defaultlimit, c.SessionConsistency, nil)
 	FailTestIfError(err, "Error in scan result validation", t)
 }
 

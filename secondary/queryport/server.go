@@ -4,7 +4,6 @@ import "fmt"
 import "net"
 import "sync"
 import "time"
-import "io"
 import "github.com/couchbase/indexing/secondary/platform"
 import "github.com/couchbase/indexing/secondary/logging"
 import c "github.com/couchbase/indexing/secondary/common"
@@ -60,6 +59,7 @@ func NewServer(
 	}
 
 	s.serv = squash.NewServer(laddr, s.handleConnection)
+	go s.serv.Run()
 	/*
 		if s.lis, err = net.Listen("tcp", laddr); err != nil {
 			logging.Errorf("%v failed starting %v !!\n", s.logPrefix, err)
@@ -135,44 +135,13 @@ func (s *Server) handleConnection(conn net.Conn) {
 		platform.AddInt64(&s.nConnections, -1)
 	}()
 
-	raddr := conn.RemoteAddr()
 	defer func() {
 		conn.Close()
-		logging.Infof("%v connection %v closed\n", s.logPrefix, raddr)
+		//logging.Infof("%v connection %v closed\n", s.logPrefix, raddr)
 	}()
 
-	// start a receive routine.
-	rcvch := make(chan interface{}, s.streamChanSize)
-	go s.doReceive(conn, rcvch)
-
-loop:
-	for {
-		select {
-		case req, ok := <-rcvch:
-			if _, yes := req.(*protobuf.EndStreamRequest); yes { // skip
-				format := "%v connection %q skip protobuf.EndStreamRequest\n"
-				logging.Infof(format, s.logPrefix, raddr)
-				break
-			} else if !ok {
-				break loop
-			}
-			quitch := make(chan interface{})
-			mfinch := make(chan bool)
-			go s.monitorClient(conn, rcvch, quitch, mfinch)
-			s.callb(req, conn, quitch) // blocking call
-			// shutdown monitor routine synchronously
-			mfinch <- true
-			<-mfinch
-			// End response should be only sent after monitor is shutdown
-			// otherwise it could lead to loss of next request coming through
-			// same connection.
-
-			transport.SendResponseEnd(conn)
-
-		case <-s.killch:
-			break loop
-		}
-	}
+	s.doReceive(conn)
+	transport.SendResponseEnd(conn)
 }
 
 func (s *Server) monitorClient(
@@ -210,37 +179,16 @@ func (s *Server) monitorClient(
 
 // receive requests from remote, when this function returns
 // the connection is expected to be closed.
-func (s *Server) doReceive(conn net.Conn, rcvch chan<- interface{}) {
-	raddr := conn.RemoteAddr()
-
+func (s *Server) doReceive(conn net.Conn) {
 	// transport buffer for receiving
 	flags := transport.TransportFlag(0).SetProtobuf()
 	rpkt := transport.NewTransportPacket(s.maxPayload, flags)
 	rpkt.SetDecoder(transport.EncodingProtobuf, protobuf.ProtobufDecode)
 
-	logging.Infof("%v connection %q doReceive() ...\n", s.logPrefix, raddr)
-
-loop:
-	for {
-		// TODO: Fix read timeout correctly
-		// timeoutMs := s.readDeadline * time.Millisecond
-		// conn.SetReadDeadline(time.Now().Add(timeoutMs))
-
-		req, err := rpkt.Receive(conn)
-		// TODO: handle close-connection and don't print error message.
-		if err != nil {
-			if err == io.EOF {
-				logging.Tracef("%v connection %q exited %v\n", s.logPrefix, raddr, err)
-			} else {
-				logging.Errorf("%v connection %q exited %v\n", s.logPrefix, raddr, err)
-			}
-			break loop
-		}
-		select {
-		case rcvch <- req:
-		case <-s.killch:
-			break loop
-		}
+	req, err := rpkt.Receive(conn)
+	if err != nil {
+		return
 	}
-	close(rcvch)
+	quitch := make(chan interface{})
+	s.callb(req, conn, quitch) // blocking call
 }
