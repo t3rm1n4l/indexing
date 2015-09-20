@@ -9,7 +9,7 @@ import "github.com/couchbase/indexing/secondary/logging"
 import c "github.com/couchbase/indexing/secondary/common"
 import protobuf "github.com/couchbase/indexing/secondary/protobuf/query"
 import "github.com/couchbase/indexing/secondary/transport"
-import "github.com/t3rm1n4l/squash"
+import "github.com/couchbase/indexing/secondary/squash"
 
 // RequestHandler shall interpret the request message
 // from client and post response message(s) on `respch`
