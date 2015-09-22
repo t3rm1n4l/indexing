@@ -144,8 +144,8 @@ func (mux *ConnMux) Close() error {
 }
 
 func NewConnMux(conn net.Conn, callb func(*Conn)) *ConnMux {
-	//	w := bufio.NewWriterSize(conn, wBufSize)
-	w := conn
+	w := bufio.NewWriterSize(conn, wBufSize)
+	//w := conn
 	r := bufio.NewReaderSize(conn, rBufSize)
 
 	mux := &ConnMux{
@@ -161,15 +161,14 @@ func NewConnMux(conn net.Conn, callb func(*Conn)) *ConnMux {
 		newConnCallback: callb,
 	}
 
-	/*
-		go func() {
-			for {
-				time.Sleep(flushInterval)
-				mux.reqWrite <- Request{id: 0, typ: FlushReq}
+	go func() {
+		for {
+			time.Sleep(flushInterval)
+			mux.reqWrite <- Request{id: 0, typ: FlushReq}
 
-			}
-		}()
-	*/
+		}
+	}()
+
 	go mux.handleOutgoing()
 	go mux.handleIncoming()
 

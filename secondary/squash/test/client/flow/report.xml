@@ -24,11 +24,11 @@
       <os_sysname>Darwin</os_sysname>
       <os_release>14.4.0</os_release>
       <os_version>Darwin Kernel Version 14.4.0: Thu May 28 11:35:04 PDT 2015; root:xnu-2782.30.5~1/RELEASE_X86_64</os_version>
-      <host>Saraths-MacBook-Pro.local</host>
+      <host>Saraths-MBP.northscale.in</host>
       <arch>x86_64</arch>
-      <command_line>tcpflow -i lo0 port 9107</command_line>
+      <command_line>tcpflow -i lo0 port 9101</command_line>
       <uid>0</uid>
-      <start_time>2015-09-19T15:30:42Z</start_time>
+      <start_time>2015-09-21T08:28:26Z</start_time>
     </execution_environment>
   </creator>
   <configuration>
@@ -36,12 +36,7 @@
   <tdelta>0</tdelta>
   <configuration>
     <fileobject>
-      <filename>127.000.000.001.62141-127.000.000.001.09107</filename>
-      <filesize>24</filesize>
-      <tcpflow startime='2015-09-19T21:00:45.479277Z' endtime='2015-09-19T21:00:45.480415Z' src_ipn='127.0.0.1' dst_ipn='127.0.0.1' mac_daddr='02:00:00:00:45:00' mac_saddr='00:40:57:6d:40:00' packets='8' srcport='62141' dstport='9107' family='2' />
-    </fileobject>
-    <fileobject>
-      <filename>127.000.000.001.09107-127.000.000.001.62141</filename>
-      <filesize>79</filesize>
-      <tcpflow startime='2015-09-19T21:00:45.479321Z' endtime='2015-09-19T21:00:45.480472Z' src_ipn='127.0.0.1' dst_ipn='127.0.0.1' mac_daddr='02:00:00:00:45:00' mac_saddr='00:40:b7:f4:40:00' packets='9' srcport='9107' dstport='62141' family='2' />
+      <filename>127.000.000.001.61158-127.000.000.001.09101</filename>
+      <filesize>32</filesize>
+      <tcpflow startime='2015-09-21T13:58:30.718829Z' endtime='2015-09-21T13:58:30.722426Z' src_ipn='127.0.0.1' dst_ipn='127.0.0.1' mac_daddr='02:00:00:00:45:00' mac_saddr='00:40:0b:74:40:00' packets='5' srcport='61158' dstport='9101' family='2' />
     </fileobject>

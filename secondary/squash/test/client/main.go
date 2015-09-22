@@ -23,7 +23,7 @@ var (
 )
 
 func init() {
-	req, _ = ioutil.ReadFile("/Users/sarath/development/sherlock/godeps/src/github.com/t3rm1n4l/squash/test/client/flow/client")
+	req, _ = ioutil.ReadFile("/Users/sarath/development/sherlock/goproj/src/github.com/couchbase/indexing/secondary/squash/test/client/flow/client")
 	fmt.Println("size=", len(req))
 	pool = sync.Pool{
 		New: func() interface{} {
@@ -55,11 +55,11 @@ func main() {
 			defer wg.Done()
 			for i := 0; i < nperthr; i++ {
 				p := c.NewConn()
-				p.Write(req[:6])
-				p.Write(req[6:])
+				p.Write(req[4:10])
+				p.Write(req[14:32])
 				buf := pool.Get()
 				p.Read(buf.([]byte)[:6])
-				p.Read(buf.([]byte)[:67])
+				p.Read(buf.([]byte)[:48])
 				p.Read(buf.([]byte)[:6])
 				pool.Put(buf)
 				p.Close()
