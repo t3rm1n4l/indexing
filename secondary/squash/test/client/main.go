@@ -55,8 +55,8 @@ func main() {
 			defer wg.Done()
 			for i := 0; i < nperthr; i++ {
 				p := c.NewConn()
-				p.Write(req[4:10])
-				p.Write(req[14:32])
+				p.Write(req[8:14])
+				p.Write(req[22:])
 				buf := pool.Get()
 				p.Read(buf.([]byte)[:6])
 				p.Read(buf.([]byte)[:48])

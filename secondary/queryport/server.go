@@ -4,12 +4,21 @@ import "fmt"
 import "net"
 import "sync"
 import "time"
+import "io/ioutil"
 import "github.com/couchbase/indexing/secondary/platform"
 import "github.com/couchbase/indexing/secondary/logging"
+
+//import "github.com/golang/protobuf/proto"
 import c "github.com/couchbase/indexing/secondary/common"
 import protobuf "github.com/couchbase/indexing/secondary/protobuf/query"
 import "github.com/couchbase/indexing/secondary/transport"
 import "github.com/couchbase/indexing/secondary/squash"
+
+var payloadPool *c.BytesBufPool
+
+func init() {
+	payloadPool = c.NewByteBufferPool(1024)
+}
 
 // RequestHandler shall interpret the request message
 // from client and post response message(s) on `respch`
@@ -41,6 +50,38 @@ type ServerStats struct {
 	Connections int64
 }
 
+const (
+	reqSize  = 200
+	respSize = 200
+)
+
+var (
+	pool sync.Pool
+	resp []byte
+)
+
+func init() {
+	resp, _ = ioutil.ReadFile("/Users/sarath/development/sherlock/goproj/src/github.com/couchbase/indexing/secondary/squash/test/client/flow/server")
+	pool = sync.Pool{
+		New: func() interface{} {
+			return make([]byte, reqSize+respSize)
+		},
+	}
+}
+
+func callback(p net.Conn) {
+	buf := pool.Get()
+	p.Read(buf.([]byte)[:6])
+	p.Read(buf.([]byte)[:18])
+	pool.Put(buf)
+
+	time.Sleep(time.Nanosecond * 80003)
+	p.Write(resp[8:14])
+	p.Write(resp[22:70])
+	p.Write(resp[78:])
+	p.Close()
+}
+
 // NewServer creates a new queryport daemon.
 func NewServer(
 	laddr string, callb RequestHandler,
@@ -59,6 +100,7 @@ func NewServer(
 	}
 
 	s.serv = squash.NewServer(laddr, s.handleConnection)
+	//s.serv = squash.NewServer(laddr, callback)
 	go s.serv.Run()
 	/*
 		if s.lis, err = net.Listen("tcp", laddr); err != nil {
@@ -181,14 +223,43 @@ func (s *Server) monitorClient(
 // the connection is expected to be closed.
 func (s *Server) doReceive(conn net.Conn) {
 	// transport buffer for receiving
+
+	/*
+		buf := make([]byte, 18)
+		conn.Read(buf[:6])
+		conn.Read(buf[:18])
+	*/
+
 	flags := transport.TransportFlag(0).SetProtobuf()
-	rpkt := transport.NewTransportPacket(s.maxPayload, flags)
+	buf := payloadPool.Get()
+	defer payloadPool.Put(buf)
+	rpkt := transport.NewTransportPacket2(*buf, flags)
 	rpkt.SetDecoder(transport.EncodingProtobuf, protobuf.ProtobufDecode)
 
 	req, err := rpkt.Receive(conn)
-	if err != nil {
-		return
-	}
+
+	_ = err
+
+	//	_, data, _ := transport.Receive(conn, make([]byte, s.maxPayload))
+
+	//data := payloadPool.Get()
+	//io.ReadFull(conn, (*data)[:8+16])
+	//_ = data
+	/*
+		pl := &protobuf.QueryPayload{}
+		proto.Unmarshal(data, pl)
+		req := pl.GetScanAllRequest()
+			req, err := protobuf.ProtobufDecode(data)
+			if err != nil {
+				return
+			}
+	*/
+
+	//conn.Write(resp[8:14])
+	//conn.Write(resp[22:70])
+	_ = req
+	//	conn.Write(resp[78:])
+
 	quitch := make(chan interface{})
 	s.callb(req, conn, quitch) // blocking call
 }

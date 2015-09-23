@@ -41,9 +41,9 @@ func callback(p net.Conn) {
 	pool.Put(buf)
 
 	time.Sleep(time.Nanosecond * 80003)
-	p.Write(resp[4:10])
-	p.Write(resp[14:62])
-	p.Write(resp[66:72])
+	p.Write(resp[8:14])
+	p.Write(resp[22:70])
+	p.Write(resp[78:])
 	p.Close()
 }
 

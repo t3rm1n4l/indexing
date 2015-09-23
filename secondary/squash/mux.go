@@ -3,9 +3,7 @@ package squash
 import (
 	"bufio"
 	"encoding/binary"
-	//	"github.com/couchbase/indexing/secondary/logging"
 	"io"
-	"math/rand"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -13,9 +11,10 @@ import (
 )
 
 const (
-	rBufSize      = 128 * 1024
-	wBufSize      = 128 * 1024
-	flushInterval = time.Millisecond
+	rBufSize       = 128 * 1024
+	wBufSize       = 128 * 1024
+	flushInterval  = time.Millisecond / 2
+	maxPayloadSize = 16 * 1024
 )
 
 type ConnMux struct {
@@ -27,7 +26,7 @@ type ConnMux struct {
 	conn            net.Conn
 	w               io.Writer
 	r               io.Reader
-	raccess         map[ConnId]chan bool
+	raccess         map[ConnId]*pipe
 	waccess         map[ConnId]chan bool
 	reqWrite        chan Request
 	newConnCallback func(*Conn)
@@ -43,13 +42,13 @@ func (mux *ConnMux) newConn(id ConnId) *Conn {
 	defer mux.Unlock()
 
 	p := &Conn{
-		id:  id,
-		mux: mux,
-		rch: make(chan bool),
-		wch: make(chan bool),
+		id:    id,
+		mux:   mux,
+		rpipe: newPipe(),
+		wch:   make(chan bool),
 	}
 
-	mux.raccess[id] = p.rch
+	mux.raccess[id] = p.rpipe
 	mux.waccess[id] = p.wch
 
 	return p
@@ -65,17 +64,11 @@ func (mux *ConnMux) delConn(id ConnId) error {
 }
 
 func (mux *ConnMux) write(bs []byte) (int, error) {
-	a, b := mux.w.Write(bs)
-	//logging.Infof("write %v,%v\n", a, b)
-	//mux.w.(*bufio.Writer).Flush()
-	return a, b
+	return mux.w.Write(bs)
 }
 
 func (mux *ConnMux) read(bs []byte) (int, error) {
-	a, b := io.ReadFull(mux.r, bs)
-	//logging.Infof("read %v,%v\n", a, b)
-	return a, b
-
+	return io.ReadFull(mux.r, bs)
 }
 
 func (mux *ConnMux) handleOutgoing() {
@@ -94,7 +87,7 @@ func (mux *ConnMux) handleOutgoing() {
 			mux.RUnlock()
 
 			mux.werr = binary.Write(mux.w, binary.LittleEndian, req.id)
-			//logging.Infof("write === id %v\n", req.id)
+			mux.werr = binary.Write(mux.w, binary.LittleEndian, uint32(req.size))
 			if mux.werr != nil {
 				return
 			}
@@ -111,31 +104,30 @@ func (mux *ConnMux) handleIncoming() {
 	defer close(mux.wquitch)
 
 	var id ConnId
+	var size uint32
+	buf := make([]byte, maxPayloadSize)
 	for {
 		mux.rerr = binary.Read(mux.r, binary.LittleEndian, &id)
-		//logging.Infof("read === id %v\n", id)
+		mux.rerr = binary.Read(mux.r, binary.LittleEndian, &size)
+		if mux.rerr != nil {
+			return
+		}
+
+		_, mux.rerr = io.ReadFull(mux.r, buf[:size])
 		if mux.rerr != nil {
 			return
 		}
 
 		mux.RLock()
-		ch, ok := mux.raccess[id]
+		rpipe, ok := mux.raccess[id]
 		mux.RUnlock()
-		if ok {
-			ch <- true
-			<-ch
-		} else {
+		if !ok {
 			p := mux.newConn(id)
-			if mux.newConnCallback != nil {
-				go mux.newConnCallback(p)
-			}
-			p.rch <- true
-			<-p.rch
+			rpipe = p.rpipe
+			go mux.newConnCallback(p)
 		}
 
-		if mux.rerr != nil {
-			return
-		}
+		rpipe.Write(buf[:size])
 	}
 }
 
@@ -145,7 +137,6 @@ func (mux *ConnMux) Close() error {
 
 func NewConnMux(conn net.Conn, callb func(*Conn)) *ConnMux {
 	w := bufio.NewWriterSize(conn, wBufSize)
-	//w := conn
 	r := bufio.NewReaderSize(conn, rBufSize)
 
 	mux := &ConnMux{
@@ -154,8 +145,7 @@ func NewConnMux(conn net.Conn, callb func(*Conn)) *ConnMux {
 		conn:            conn,
 		w:               w,
 		r:               r,
-		counter:         uint32(rand.Int()),
-		raccess:         make(map[ConnId]chan bool),
+		raccess:         make(map[ConnId]*pipe),
 		waccess:         make(map[ConnId]chan bool),
 		reqWrite:        make(chan Request),
 		newConnCallback: callb,

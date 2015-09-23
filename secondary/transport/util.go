@@ -42,7 +42,7 @@ func SendResponseEnd(conn transporter) error {
 
 func Receive(conn transporter, buf []byte) (flags TransportFlag, payload []byte, err error) {
 	// transport de-framing
-	if err = fullRead(conn, buf[:pktDataOffset]); err != nil {
+	if _, err = io.ReadFull(conn, buf[:pktDataOffset]); err != nil {
 		if err == io.EOF {
 			logging.Tracef("receiving packet: %v\n", err)
 		} else {
@@ -60,7 +60,7 @@ func Receive(conn transporter, buf []byte) (flags TransportFlag, payload []byte,
 		err = ErrorPacketOverflow
 		return
 	}
-	if err = fullRead(conn, buf[:pktlen]); err != nil {
+	if _, err = io.ReadFull(conn, buf[:pktlen]); err != nil {
 		if err == io.EOF {
 			logging.Tracef("receiving packet: %v\n", err)
 		} else {

@@ -28,7 +28,7 @@
       <arch>x86_64</arch>
       <command_line>tcpflow -i lo0 port 9101</command_line>
       <uid>0</uid>
-      <start_time>2015-09-21T08:28:26Z</start_time>
+      <start_time>2015-09-23T07:18:09Z</start_time>
     </execution_environment>
   </creator>
   <configuration>
@@ -36,7 +36,7 @@
   <tdelta>0</tdelta>
   <configuration>
     <fileobject>
-      <filename>127.000.000.001.61158-127.000.000.001.09101</filename>
-      <filesize>32</filesize>
-      <tcpflow startime='2015-09-21T13:58:30.718829Z' endtime='2015-09-21T13:58:30.722426Z' src_ipn='127.0.0.1' dst_ipn='127.0.0.1' mac_daddr='02:00:00:00:45:00' mac_saddr='00:40:0b:74:40:00' packets='5' srcport='61158' dstport='9101' family='2' />
+      <filename>127.000.000.001.62161-127.000.000.001.09101</filename>
+      <filesize>40</filesize>
+      <tcpflow startime='2015-09-23T12:48:14.215211Z' endtime='2015-09-23T12:48:14.218900Z' src_ipn='127.0.0.1' dst_ipn='127.0.0.1' mac_daddr='02:00:00:00:45:00' mac_saddr='00:40:d1:2d:40:00' packets='5' srcport='62161' dstport='9101' family='2' />
     </fileobject>

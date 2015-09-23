@@ -1,8 +1,7 @@
 package squash
 
 import (
-	"fmt"
-	//	"github.com/couchbase/indexing/secondary/logging"
+	//	"fmt"
 	"net"
 	"time"
 )
@@ -16,31 +15,34 @@ const (
 )
 
 type Request struct {
-	id  ConnId
-	typ Reqtype
+	id   ConnId
+	typ  Reqtype
+	size int
 }
 
 type Conn struct {
-	id  ConnId
-	mux *ConnMux
-	rch chan bool
-	wch chan bool
+	id    ConnId
+	mux   *ConnMux
+	rpipe *pipe
+	wch   chan bool
 }
 
 func (p *Conn) Read(bs []byte) (int, error) {
-	//logging.Infof("READ %v %v\n", p.id, len(bs))
-	<-p.rch
-	n, err := p.mux.read(bs)
-	p.rch <- true
-	return n, err
+	if len(bs) == 0 {
+		return 0, nil
+	}
+
+	//	fmt.Println("READ", len(bs))
+	return p.rpipe.Read(bs)
 }
 
 func (p *Conn) Write(bs []byte) (int, error) {
 	if len(bs) == 0 {
 		return 0, nil
 	}
-	//logging.Infof("WRITE %v %v\n", p.id, len(bs))
-	p.mux.reqWrite <- Request{id: p.id, typ: WriteReq}
+
+	//	fmt.Println("WRITE", len(bs))
+	p.mux.reqWrite <- Request{id: p.id, typ: WriteReq, size: len(bs)}
 	<-p.wch
 	n, err := p.mux.write(bs)
 	p.wch <- true
@@ -69,8 +71,4 @@ func (p *Conn) SetReadDeadline(time.Time) error {
 
 func (p *Conn) SetWriteDeadline(time.Time) error {
 	return nil
-}
-
-func (p *Conn) String() string {
-	return fmt.Sprintf("connid=%d", p.id)
 }

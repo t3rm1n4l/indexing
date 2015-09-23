@@ -77,6 +77,17 @@ func NewTransportPacket(maxlen int, flags TransportFlag) *TransportPacket {
 	pkt.decoders[EncodingNone] = nil
 	return pkt
 }
+func NewTransportPacket2(buf []byte, flags TransportFlag) *TransportPacket {
+	pkt := &TransportPacket{
+		flags:    flags,
+		buf:      buf,
+		encoders: make(map[byte]Encoder),
+		decoders: make(map[byte]Decoder),
+	}
+	pkt.encoders[EncodingNone] = nil
+	pkt.decoders[EncodingNone] = nil
+	return pkt
+}
 
 // SetEncoder callback function for `type`.
 func (pkt *TransportPacket) SetEncoder(typ byte, callb Encoder) *TransportPacket {

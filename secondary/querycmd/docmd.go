@@ -321,9 +321,6 @@ func HandleCommand(
 		} else {
 			err = client.ScanAll(
 				uint64(defnID), limit, cons, nil, callb)
-			fmt.Println("seceond")
-			err = client.ScanAll(
-				uint64(defnID), limit, cons, nil, callb)
 		}
 		if err == nil {
 			fmt.Fprintln(w, "Total number of entries: ", entries)

@@ -1,0 +1,183 @@
+From 077488892f9451e9dff644adb6dff474bf49844c Mon Sep 17 00:00:00 2001
+From: Sarath Lakshman <sarathlakshman@slynux.com>
+Date: Sat, 19 Sep 2015 18:05:17 +0530
+Subject: [PATCH] randome changes
+
+---
+ client.go           |  6 +++++-
+ conn.go             |  6 +++---
+ mux.go              | 14 +++++++++-----
+ server.go           | 10 +++++++---
+ test/client/main.go |  4 ++--
+ test/server/main.go |  8 +++++---
+ 6 files changed, 31 insertions(+), 17 deletions(-)
+
+diff --git a/client.go b/client.go
+index 2c50716..05e6036 100644
+--- a/client.go
++++ b/client.go
+@@ -24,7 +24,11 @@ func NewClient(addr string) (*Client, error) {
+ 	return &Client{addr: addr, mux: mux}, nil
+ }
+ 
+-func (c *Client) NewConn() Conn {
++func (c *Client) NewConn() *Conn {
+ 	id := c.mux.nextConnId()
+ 	return c.mux.newConn(id)
+ }
++
++func (c *Client) Close() error {
++	return c.mux.Close()
++}
+diff --git a/conn.go b/conn.go
+index 2194fed..6bf0530 100644
+--- a/conn.go
++++ b/conn.go
+@@ -52,14 +52,14 @@ func (p *Conn) RemoteAddr() net.Addr {
+ 	return p.mux.conn.RemoteAddr()
+ }
+ 
+-func (p *Conn) SetDeadLine(time.Time) error {
++func (p *Conn) SetDeadline(time.Time) error {
+ 	return nil
+ }
+ 
+-func (p *Conn) SetReadDeadLine(time.Time) error {
++func (p *Conn) SetReadDeadline(time.Time) error {
+ 	return nil
+ }
+ 
+-func (p *Conn) SetWriteDeadLine(time.Time) error {
++func (p *Conn) SetWriteDeadline(time.Time) error {
+ 	return nil
+ }
+diff --git a/mux.go b/mux.go
+index 7328c85..3c1a453 100644
+--- a/mux.go
++++ b/mux.go
+@@ -13,7 +13,7 @@ import (
+ const (
+ 	rBufSize      = 128 * 1024
+ 	wBufSize      = 128 * 1024
+-	flushInterval = time.Millisecond
++	flushInterval = 2 * time.Millisecond
+ )
+ 
+ type ConnMux struct {
+@@ -28,7 +28,7 @@ type ConnMux struct {
+ 	raccess         map[ConnId]chan bool
+ 	waccess         map[ConnId]chan bool
+ 	reqWrite        chan Request
+-	newConnCallback func(Conn)
++	newConnCallback func(*Conn)
+ 	sync.RWMutex
+ }
+ 
+@@ -36,11 +36,11 @@ func (mux *ConnMux) nextConnId() ConnId {
+ 	return ConnId(atomic.AddUint32(&mux.counter, 1))
+ }
+ 
+-func (mux *ConnMux) newConn(id ConnId) Conn {
++func (mux *ConnMux) newConn(id ConnId) *Conn {
+ 	mux.Lock()
+ 	defer mux.Unlock()
+ 
+-	p := Conn{
++	p := &Conn{
+ 		id:  id,
+ 		mux: mux,
+ 		rch: make(chan bool),
+@@ -127,7 +127,11 @@ func (mux *ConnMux) handleIncoming() {
+ 	}
+ }
+ 
+-func NewConnMux(conn net.Conn, callb func(Conn)) *ConnMux {
++func (mux *ConnMux) Close() error {
++	return mux.conn.Close()
++}
++
++func NewConnMux(conn net.Conn, callb func(*Conn)) *ConnMux {
+ 	w := bufio.NewWriterSize(conn, wBufSize)
+ 	r := bufio.NewReaderSize(conn, rBufSize)
+ 
+diff --git a/server.go b/server.go
+index 338d3f0..3ab0b31 100644
+--- a/server.go
++++ b/server.go
+@@ -6,10 +6,10 @@ import (
+ 
+ type Server struct {
+ 	laddr string
+-	callb func(Conn)
++	callb func(net.Conn)
+ }
+ 
+-func NewServer(laddr string, callb func(Conn)) *Server {
++func NewServer(laddr string, callb func(net.Conn)) *Server {
+ 	return &Server{
+ 		laddr: laddr,
+ 		callb: callb,
+@@ -28,7 +28,11 @@ func (s *Server) Run() error {
+ 			return err
+ 		}
+ 
+-		NewConnMux(conn, s.callb)
++		cb := func(conn *Conn) {
++			s.callb(conn)
++		}
++
++		NewConnMux(conn, cb)
+ 	}
+ 
+ 	return nil
+diff --git a/test/client/main.go b/test/client/main.go
+index 92de74a..5309457 100644
+--- a/test/client/main.go
++++ b/test/client/main.go
+@@ -12,8 +12,8 @@ import (
+ )
+ 
+ const (
+-	reqSize  = 100
+-	respSize = 100
++	reqSize  = 200
++	respSize = 200
+ )
+ 
+ var (
+diff --git a/test/server/main.go b/test/server/main.go
+index 476bf9a..153dafa 100644
+--- a/test/server/main.go
++++ b/test/server/main.go
+@@ -5,11 +5,12 @@ import (
+ 	"github.com/t3rm1n4l/squash"
+ 	"os"
+ 	"sync"
++	"time"
+ )
+ 
+ const (
+-	reqSize  = 100
+-	respSize = 100
++	reqSize  = 200
++	respSize = 200
+ )
+ 
+ var (
+@@ -27,11 +28,12 @@ func init() {
+ 	resp = make([]byte, respSize)
+ }
+ 
+-func callback(p squash.Conn) {
++func callback(p *squash.Conn) {
+ 	buf := pool.Get()
+ 	p.Read(buf.([]byte)[:reqSize])
+ 	pool.Put(buf)
+ 
++	time.Sleep(time.Millisecond * 20)
+ 	p.Write(resp)
+ 	p.Close()
+ }
+-- 
+2.4.1
+

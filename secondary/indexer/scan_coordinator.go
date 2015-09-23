@@ -648,50 +648,46 @@ func (s *scanCoordinator) tryRespondWithError(w ScanResponseWriter, req *ScanReq
 func (s *scanCoordinator) serverCallback(protoReq interface{}, conn net.Conn,
 	cancelCh <-chan interface{}) {
 
+	req, err := s.newRequest(protoReq, cancelCh)
+	w := NewProtoWriter(req.ScanType, conn)
+	defer func() {
+		s.handleError(req.LogPrefix, w.Done())
+		req.Done()
+	}()
 	/*
-		req, err := s.newRequest(protoReq, cancelCh)
-		w := NewProtoWriter(req.ScanType, conn)
-		defer func() {
-			s.handleError(req.LogPrefix, w.Done())
-			req.Done()
-		}()
+		w := NewProtoWriter(ScanAllReq, conn)
+		w.Row([]byte("docid-272"), []byte("[\"04b4bjUohqjhgZ6LKB9OFfCOx\"]"))
+		w.Done()
+		return
 	*/
+	logging.Verbosef("%s REQUEST %s", req.LogPrefix, req)
 
-	w := NewProtoWriter(ScanAllReq, conn)
-	w.Row([]byte("docid-111"), []byte("[\"03qEj1Vct2udMK9AoSjOXJgCg\"]"))
-	w.Done()
-	return
-
-	/*
-		logging.Verbosef("%s REQUEST %s", req.LogPrefix, req)
-
-		if req.Consistency != nil {
-			logging.LazyVerbose(func() string {
-				return fmt.Sprintf("%s requested timestamp: %s => %s Crc64 => %v", req.LogPrefix,
-					strings.ToLower(req.Consistency.String()), ScanTStoString(req.Ts), req.Ts.GetCrc64())
-			})
-		}
-
-		if s.tryRespondWithError(w, req, err) {
-			return
-		}
-
-		req.Stats.numRequests.Add(1)
-
-		t0 := time.Now()
-		is, err := s.getRequestedIndexSnapshot(req)
-		if s.tryRespondWithError(w, req, err) {
-			return
-		}
-
-		defer DestroyIndexSnapshot(is)
-
+	if req.Consistency != nil {
 		logging.LazyVerbose(func() string {
-			return fmt.Sprintf("%s snapshot timestamp: %s",
-				req.LogPrefix, ScanTStoString(is.Timestamp()))
+			return fmt.Sprintf("%s requested timestamp: %s => %s Crc64 => %v", req.LogPrefix,
+				strings.ToLower(req.Consistency.String()), ScanTStoString(req.Ts), req.Ts.GetCrc64())
 		})
-		s.processRequest(req, w, is, t0)
-	*/
+	}
+
+	if s.tryRespondWithError(w, req, err) {
+		return
+	}
+
+	req.Stats.numRequests.Add(1)
+
+	t0 := time.Now()
+	is, err := s.getRequestedIndexSnapshot(req)
+	if s.tryRespondWithError(w, req, err) {
+		return
+	}
+
+	defer DestroyIndexSnapshot(is)
+
+	logging.LazyVerbose(func() string {
+		return fmt.Sprintf("%s snapshot timestamp: %s",
+			req.LogPrefix, ScanTStoString(is.Timestamp()))
+	})
+	s.processRequest(req, w, is, t0)
 }
 
 func (s *scanCoordinator) processRequest(req *ScanRequest, w ScanResponseWriter,

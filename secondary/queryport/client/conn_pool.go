@@ -33,6 +33,7 @@ type connectionPool struct {
 type connection struct {
 	conn net.Conn
 	pkt  *transport.TransportPacket
+	b    *[]byte
 }
 
 func newConnectionPool(
@@ -67,7 +68,7 @@ func (cp *connectionPool) defaultMkConn(host string) (*connection, error) {
 	pkt := transport.NewTransportPacket(cp.maxPayload, flags)
 	pkt.SetEncoder(transport.EncodingProtobuf, protobuf.ProtobufEncode)
 	pkt.SetDecoder(transport.EncodingProtobuf, protobuf.ProtobufDecode)
-	return &connection{conn, pkt}, nil
+	return &connection{conn, pkt, nil}, nil
 }
 
 func (cp *connectionPool) Close() (err error) {
