@@ -14,7 +14,7 @@ package indexer
 // breakpad_wrapper library (which exposes a C API to Breakpad).
 //
 
-// #cgo LDFLAGS: -lbreakpad_wrapper
+// #cgo LDFLAGS: -lbreakpad_wrapper -L/Users/sarath/development/sherlock/install/lib/
 // #include <breakpad_wrapper/breakpad_wrapper.h>
 // #include <stdlib.h>
 import "C"
@@ -34,9 +34,9 @@ func BreakpadInitialize(minidump_dir string) {
 }
 
 func BreakpadWriteMinidump() {
-     C.breakpad_write_minidump()
+	C.breakpad_write_minidump()
 }
 
 func BreakpadGetWriteMinidumpAsUintptr() uintptr {
-    return uintptr(C.breakpad_get_write_minidump_addr())
+	return uintptr(C.breakpad_get_write_minidump_addr())
 }
