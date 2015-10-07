@@ -146,6 +146,7 @@ func NewMemDBSlice(path string, sliceId SliceId, idxDefnId common.IndexDefnId,
 	if !isPrimary {
 		slice.backstore = memdb.New()
 		slice.backstore.SetKeyComparator(byteItemDocIdCompare)
+		slice.backstore.DisableSnapshots()
 		slice.back = make([]*memdb.Writer, slice.numWriters)
 		for i := 0; i < slice.numWriters; i++ {
 			slice.back[i] = slice.backstore.NewWriter()
@@ -281,53 +282,69 @@ func (mdb *memdbSlice) insertPrimaryIndex(entry []byte, docid []byte, workerId i
 }
 
 func (mdb *memdbSlice) insertSecIndex(entry []byte, docid []byte, workerId int) {
-	var oldentry []byte
+	//var oldentry []byte
 	var lookupentry []byte
 	if entry == nil {
+		// Delete existing entries from main and back
 		lookupentry = entryBytesFromDocId(docid)
+
+		itm := memdb.NewItem(lookupentry)
+		n, found := mdb.back[workerId].Delete2(itm)
+		if found {
+			mdb.main[workerId].DeleteNode(n.GClink)
+		}
+
 	} else {
-		lookupentry = entry
+		itm := memdb.NewItem(entry)
+		n, updated := mdb.back[workerId].Upsert2(itm)
+		if updated {
+			mdb.main[workerId].DeleteNode(n.GClink)
+		}
+		itm2 := memdb.NewItem(entry)
+		n.GClink = mdb.main[workerId].Put2(itm2)
 	}
 
-	oldentry = mdb.getBackIndexEntry(lookupentry, workerId)
-	if oldentry != nil {
-		if bytes.Equal(oldentry, entry) {
-			logging.Tracef("MemDBSlice::insert \n\tSliceId %v IndexInstId %v Received Unchanged Key for "+
-				"Doc Id %v. Key %v. Skipped.", mdb.id, mdb.idxInstId, string(docid), entry)
+	/*
+		oldentry = mdb.getBackIndexEntry(lookupentry, workerId)
+		if oldentry != nil {
+			if bytes.Equal(oldentry, entry) {
+				logging.Tracef("MemDBSlice::insert \n\tSliceId %v IndexInstId %v Received Unchanged Key for "+
+					"Doc Id %v. Key %v. Skipped.", mdb.id, mdb.idxInstId, string(docid), entry)
+				return
+			}
+
+			t0 := time.Now()
+			itm := memdb.NewItem(oldentry)
+			mdb.main[workerId].Delete(itm)
+			mdb.idxStats.Timings.stKVDelete.Put(time.Now().Sub(t0))
+			platform.AddInt64(&mdb.delete_bytes, int64(len(oldentry)))
+
+			t0 = time.Now()
+			mdb.back[workerId].Delete(itm)
+			mdb.idxStats.Timings.stKVDelete.Put(time.Now().Sub(t0))
+			platform.AddInt64(&mdb.delete_bytes, int64(len(docid)))
+			mdb.isDirty = true
+		}
+
+		if entry == nil {
+			logging.Tracef("MemDBSlice::insert \n\tSliceId %v IndexInstId %v Received NIL Key for "+
+				"Doc Id %s. Skipped.", mdb.id, mdb.idxInstId, docid)
 			return
 		}
 
+		//set the back index entry <docid, encodedkey>
 		t0 := time.Now()
-		itm := memdb.NewItem(oldentry)
-		mdb.main[workerId].Delete(itm)
-		mdb.idxStats.Timings.stKVDelete.Put(time.Now().Sub(t0))
-		platform.AddInt64(&mdb.delete_bytes, int64(len(oldentry)))
+		itm := memdb.NewItem(entry)
+		mdb.back[workerId].Put(itm)
+		mdb.idxStats.Timings.stKVSet.Put(time.Now().Sub(t0))
+		platform.AddInt64(&mdb.insert_bytes, int64(len(docid)+len(entry)))
 
 		t0 = time.Now()
-		mdb.back[workerId].Delete(itm)
-		mdb.idxStats.Timings.stKVDelete.Put(time.Now().Sub(t0))
-		platform.AddInt64(&mdb.delete_bytes, int64(len(docid)))
-		mdb.isDirty = true
-	}
-
-	if entry == nil {
-		logging.Tracef("MemDBSlice::insert \n\tSliceId %v IndexInstId %v Received NIL Key for "+
-			"Doc Id %s. Skipped.", mdb.id, mdb.idxInstId, docid)
-		return
-	}
-
-	//set the back index entry <docid, encodedkey>
-	t0 := time.Now()
-	itm := memdb.NewItem(entry)
-	mdb.back[workerId].Put(itm)
-	mdb.idxStats.Timings.stKVSet.Put(time.Now().Sub(t0))
-	platform.AddInt64(&mdb.insert_bytes, int64(len(docid)+len(entry)))
-
-	t0 = time.Now()
-	itm = memdb.NewItem(entry)
-	mdb.main[workerId].Put(itm)
-	mdb.idxStats.Timings.stKVSet.Put(time.Now().Sub(t0))
-	platform.AddInt64(&mdb.insert_bytes, int64(len(entry)))
+		itm = memdb.NewItem(entry)
+		mdb.main[workerId].Put(itm)
+		mdb.idxStats.Timings.stKVSet.Put(time.Now().Sub(t0))
+		platform.AddInt64(&mdb.insert_bytes, int64(len(entry)))
+	*/
 	mdb.isDirty = true
 }
 

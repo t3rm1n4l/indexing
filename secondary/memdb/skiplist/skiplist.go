@@ -65,6 +65,10 @@ func (n Node) Level() int {
 	return int(len(n.next) - 1)
 }
 
+func (n *Node) SetItem(itm Item) {
+	n.itm = itm
+}
+
 func (n Node) Item() Item {
 	return n.itm
 }
@@ -120,6 +124,10 @@ func (n Node) Size() int {
 			(unsafe.Sizeof(next)+unsafe.Sizeof(ref))*uintptr(n.Level()+1))
 }
 
+func (s *Skiplist) NewLevel(randFn func() float32) int {
+	return s.randomLevel(randFn)
+}
+
 func (s *Skiplist) randomLevel(randFn func() float32) int {
 	var nextLevel int
 
@@ -147,6 +155,10 @@ func (s *Skiplist) helpDelete(level int, prev, curr, next *Node) bool {
 		atomic.AddInt64(&s.usedBytes, -int64(curr.Size()))
 	}
 	return success
+}
+
+func (s *Skiplist) FindPath(itm Item, cmp CompareFn, buf *ActionBuffer) bool {
+	return s.findPath(itm, cmp, buf)
 }
 
 func (s *Skiplist) findPath(itm Item, cmp CompareFn,
@@ -195,14 +207,24 @@ func (s *Skiplist) Insert(itm Item, cmp CompareFn, buf *ActionBuffer) {
 }
 
 func (s *Skiplist) Insert2(itm Item, cmp CompareFn,
-	buf *ActionBuffer, randFn func() float32) {
-
+	buf *ActionBuffer, randFn func() float32) *Node {
 	itemLevel := s.randomLevel(randFn)
+	return s.Insert3(itm, cmp, buf, itemLevel, false)
+}
+
+func (s *Skiplist) Insert3(itm Item, cmp CompareFn,
+	buf *ActionBuffer, itemLevel int, skipFindPath bool) *Node {
+
 	x := newNode(itm, itemLevel)
 	atomic.AddInt64(&s.stats.levelNodesCount[itemLevel], 1)
 	atomic.AddInt64(&s.usedBytes, int64(x.Size()))
+
 retry:
-	s.findPath(itm, cmp, buf)
+	if skipFindPath {
+		skipFindPath = false
+	} else {
+		s.findPath(itm, cmp, buf)
+	}
 
 	x.setNext(0, buf.succs[0], false)
 	if !buf.preds[0].dcasNext(0, buf.succs[0], x, false, false) {
@@ -220,6 +242,8 @@ retry:
 			s.findPath(itm, cmp, buf)
 		}
 	}
+
+	return x
 }
 
 func (s *Skiplist) softDelete(delNode *Node) bool {
