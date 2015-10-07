@@ -165,6 +165,7 @@ func (w *Writer) Put2(x *Item) (n *skiplist.Node) {
 
 // This is an operation only available for memdb instance with snapshots disabled
 func (w *Writer) Upsert2(x *Item) (n *skiplist.Node, updated bool) {
+	itemLevel := w.store.NewLevel(w.rand.Float32)
 	found := w.iter.Seek(x)
 	if found {
 		n = w.iter.GetNode()
@@ -172,8 +173,7 @@ func (w *Writer) Upsert2(x *Item) (n *skiplist.Node, updated bool) {
 		updated = true
 	} else {
 		x.bornSn = w.getCurrSn()
-		itemLevel := w.store.NewLevel(w.rand.Float32)
-		n = w.store.Insert3(x, w.iterCmp, w.buf, itemLevel, false)
+		n = w.store.Insert3(x, w.iterCmp, w.buf, itemLevel, true)
 		//n = w.store.Insert2(x, w.iterCmp, w.buf, w.rand.Float32)
 		atomic.AddInt64(&w.count, 1)
 	}
