@@ -57,7 +57,7 @@ func (s *Skiplist) FreeBuf(b *ActionBuffer) {
 
 type Node struct {
 	next   []unsafe.Pointer
-	itm    Item
+	itm    atomic.Value
 	GClink *Node
 }
 
@@ -66,11 +66,17 @@ func (n Node) Level() int {
 }
 
 func (n *Node) SetItem(itm Item) {
-	n.itm = itm
+	if itm != nil {
+		n.itm.Store(itm)
+	}
 }
 
-func (n Node) Item() Item {
-	return n.itm
+func (n *Node) Item() Item {
+	itm := n.itm.Load()
+	if itm != nil {
+		return itm.(Item)
+	}
+	return nil
 }
 
 type NodeRef struct {
@@ -79,10 +85,12 @@ type NodeRef struct {
 }
 
 func newNode(itm Item, level int) *Node {
-	return &Node{
+	n := &Node{
 		next: make([]unsafe.Pointer, level+1),
-		itm:  itm,
 	}
+
+	n.SetItem(itm)
+	return n
 }
 
 func (n *Node) setNext(level int, ptr *Node, deleted bool) {
@@ -119,7 +127,7 @@ func (n Node) Size() int {
 	return int(
 		unsafe.Sizeof(n.next) +
 			unsafe.Sizeof(n.itm) +
-			uintptr(n.itm.Size()) +
+			uintptr(n.Item().Size()) +
 			unsafe.Sizeof(n.GClink) +
 			(unsafe.Sizeof(next)+unsafe.Sizeof(ref))*uintptr(n.Level()+1))
 }
@@ -183,7 +191,7 @@ retry:
 				next, deleted = curr.getNext(i)
 			}
 
-			cmpVal = compare(cmp, curr.itm, itm)
+			cmpVal = compare(cmp, curr.Item(), itm)
 			if cmpVal < 0 {
 				prev = curr
 				curr, _ = prev.getNext(i)
@@ -276,7 +284,7 @@ func (s *Skiplist) Delete(itm Item, cmp CompareFn, buf *ActionBuffer) bool {
 }
 
 func (s *Skiplist) DeleteNode(n *Node, cmp CompareFn, buf *ActionBuffer) bool {
-	itm := n.itm
+	itm := n.Item()
 	if s.softDelete(n) {
 		s.findPath(itm, cmp, buf)
 		return true
