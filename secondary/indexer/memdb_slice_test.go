@@ -130,7 +130,7 @@ func TestMemDBInsertionPerf(t *testing.T) {
 	t2 := time.Now()
 	for i := 0; i < nw; i++ {
 		wg.Add(1)
-		go mutationProducer(&wg, slice, i*nPerWriter, nPerWriter, i, true, streams[i])
+		go mutationProducer(&wg, slice, i*nPerWriter, nPerWriter, i, false, streams[i])
 	}
 
 	go func() {
