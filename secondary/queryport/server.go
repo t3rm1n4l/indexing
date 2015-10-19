@@ -16,7 +16,7 @@ import "github.com/couchbase/indexing/secondary/transport"
 // channel, until `quitch` is closed. When there are
 // no more response to post handler shall close `respch`.
 type RequestHandler func(
-	req interface{}, conn net.Conn, quitch <-chan interface{})
+	req interface{}, conn net.Conn, quitch <-chan bool)
 
 // Server handles queryport connections.
 type Server struct {
@@ -130,75 +130,29 @@ func (s *Server) handleConnection(conn net.Conn) {
 	}()
 
 	// start a receive routine.
+	quitch := make(chan bool)
 	rcvch := make(chan interface{}, s.streamChanSize)
-	go s.doReceive(conn, rcvch)
+	go s.doReceive(conn, rcvch, quitch)
 
 loop:
-	for {
-		select {
-		case req, ok := <-rcvch:
-			if _, yes := req.(*protobuf.EndStreamRequest); yes { // skip
-				format := "%v connection %q skip protobuf.EndStreamRequest\n"
-				logging.Infof(format, s.logPrefix, raddr)
-				break
-			} else if !ok {
-				break loop
-			}
-			quitch := make(chan interface{})
-			mfinch := make(chan bool)
-			go s.monitorClient(conn, rcvch, quitch, mfinch)
-			s.callb(req, conn, quitch) // blocking call
-			// shutdown monitor routine synchronously
-			mfinch <- true
-			<-mfinch
-			// End response should be only sent after monitor is shutdown
-			// otherwise it could lead to loss of next request coming through
-			// same connection.
-
-			transport.SendResponseEnd(conn)
-
-		case <-s.killch:
+	for req := range rcvch {
+		if _, yes := req.(*protobuf.EndStreamRequest); yes { // skip
+			format := "%v connection %q skip protobuf.EndStreamRequest\n"
+			logging.Infof(format, s.logPrefix, raddr)
 			break loop
 		}
+		s.callb(req, conn, quitch) // blocking call
+		// End response should be only sent after monitor is shutdown
+		// otherwise it could lead to loss of next request coming through
+		// same connection.
+
+		transport.SendResponseEnd(conn)
 	}
-}
-
-func (s *Server) monitorClient(
-	conn net.Conn,
-	rcvch <-chan interface{},
-	quitch chan<- interface{},
-	finch chan bool) {
-
-	raddr := conn.RemoteAddr()
-
-	select {
-	case req, ok := <-rcvch:
-		if ok {
-			if _, yes := req.(*protobuf.EndStreamRequest); yes {
-				format := "%v connection %s client requested quit"
-				logging.Debugf(format, s.logPrefix, raddr)
-			} else {
-				format := "%v connection %s unknown request %v"
-				logging.Errorf(format, s.logPrefix, raddr, req)
-			}
-		} else {
-			format := "%v connection %s client closed connection"
-			logging.Warnf(format, s.logPrefix, raddr)
-		}
-	case <-s.killch:
-	case <-finch:
-		close(finch)
-		return
-	}
-	close(quitch)
-
-	<-finch
-	close(finch)
 }
 
 // receive requests from remote, when this function returns
 // the connection is expected to be closed.
-func (s *Server) doReceive(conn net.Conn, rcvch chan<- interface{}) {
+func (s *Server) doReceive(conn net.Conn, rcvch chan<- interface{}, quitch chan bool) {
 	raddr := conn.RemoteAddr()
 
 	// transport buffer for receiving
@@ -224,10 +178,12 @@ loop:
 			}
 			break loop
 		}
-		select {
-		case rcvch <- req:
-		case <-s.killch:
-			break loop
+		if _, yes := req.(*protobuf.EndStreamRequest); yes {
+			format := "%v connection %s client requested quit"
+			logging.Debugf(format, s.logPrefix, raddr)
+			quitch <- true
+		} else {
+			rcvch <- req
 		}
 	}
 	close(rcvch)
