@@ -7,6 +7,7 @@ import "github.com/couchbase/indexing/secondary/logging"
 import "bytes"
 import "fmt"
 import "sync"
+import "encoding/binary"
 
 // TsVb is logical clock for a subset of vbuckets.
 type TsVb struct {
@@ -32,6 +33,38 @@ type TsVbuuid struct {
 	SnapType    IndexSnapType
 	LargeSnap   bool
 	SnapAligned bool
+}
+
+func EncodeTs(vbnos []uint16, seqnos []uint64, crc64 uint64, buf []byte) ([]byte, error) {
+	offset := 2
+	for i, vb := range vbnos {
+		seq := seqnos[i]
+		binary.BigEndian.PutUint16(buf[offset:offset+2], uint16(vb))
+		offset += 2
+		binary.BigEndian.PutUint64(buf[offset:offset+8], uint64(seq))
+		offset += 8
+	}
+
+	binary.BigEndian.PutUint16(buf[:2], uint16(len(vbnos)))
+	binary.BigEndian.PutUint64(buf[offset:offset+8], crc64)
+	offset += 8
+
+	return buf[:offset], nil
+}
+
+func DecodeTs(ts *TsVbuuid, buf []byte) error {
+	offset := 2
+	c := int(binary.BigEndian.Uint16(buf[0:2]))
+	for i := 0; i < c; i++ {
+		vb := int(binary.BigEndian.Uint16(buf[offset : offset+2]))
+		offset += 2
+		seq := binary.BigEndian.Uint64(buf[offset : offset+8])
+		offset += 8
+		ts.Seqnos[vb] = seq
+	}
+
+	ts.Crc64 = binary.BigEndian.Uint64(buf[offset : offset+8])
+	return nil
 }
 
 // NewTsVbuuid returns reference to new instance of TsVbuuid.

@@ -414,22 +414,16 @@ func (s *scanCoordinator) newRequest(protoReq interface{},
 	}
 
 	setConsistency := func(
-		cons common.Consistency, vector *protobuf.TsConsistency) {
+		cons common.Consistency, vector []byte) {
 
 		r.Consistency = &cons
 		cfg := s.config.Load()
 		if cons == common.QueryConsistency && vector != nil {
 			r.Ts = common.NewTsVbuuid("", cfg["numVbuckets"].Int())
-			// if vector == nil, it is similar to AnyConsistency
-			for i, vbno := range vector.Vbnos {
-				r.Ts.Seqnos[vbno] = vector.Seqnos[i]
-				r.Ts.Vbuuids[vbno] = vector.Vbuuids[i]
-			}
 
 		} else if cons == common.SessionConsistency {
 			r.Ts = common.NewTsVbuuid("", cfg["numVbuckets"].Int())
-			r.Ts.Seqnos = vector.Seqnos // full set of seqnos.
-			r.Ts.Crc64 = vector.GetCrc64()
+			common.DecodeTs(r.Ts, vector)
 		}
 	}
 

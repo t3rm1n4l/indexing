@@ -10,12 +10,6 @@ message Error {
 // AnyConsistency, this message is typically ignored.
 // SessionConsistency, {vbnos, seqnos, crc64} are to be considered.
 // QueryConsistency, {vbnos, seqnos, vbuuids} are to be considered.
-message TsConsistency {
-    repeated uint32 vbnos   = 1; // subset of vbucket numbers
-    repeated uint64 seqnos  = 2; // corresponding seqno. for each vbucket
-    repeated uint64 vbuuids = 3; // corresponding vbuuid for each vbucket
-    optional uint64 crc64   = 4; // if present, crc64 hash value of all vbuuids
-}
 
 // Request can be one of the optional field.
 message QueryPayload {
@@ -49,7 +43,7 @@ message ScanRequest {
     required bool          distinct = 3;
     required int64         limit    = 4;
     required uint32        cons     = 5;
-    optional TsConsistency vector   = 6;
+    optional bytes vector   = 6;
 }
 
 // Full table scan request from indexer.
@@ -57,7 +51,7 @@ message ScanAllRequest {
     required uint64        defnID   = 1;
     required int64         limit    = 2;
     required uint32        cons     = 3;
-    optional TsConsistency vector   = 4;
+    optional bytes vector   = 4;
 }
 
 // Request by client to stop streaming the query results.
@@ -79,7 +73,7 @@ message CountRequest {
     required uint64        defnID   = 1;
     required Span          span     = 2;
     required uint32        cons     = 3;
-    optional TsConsistency vector   = 4;
+    optional bytes vector   = 4;
 }
 
 // total number of entries in index.

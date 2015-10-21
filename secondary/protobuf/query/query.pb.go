@@ -10,7 +10,6 @@ It is generated from these files:
 
 It has these top-level messages:
 	Error
-	TsConsistency
 	QueryPayload
 	StatisticsRequest
 	StatisticsResponse
@@ -51,50 +50,6 @@ func (m *Error) GetError() string {
 		return *m.Error
 	}
 	return ""
-}
-
-// consistency timestamp specifying a subset of vbucket.
-// AnyConsistency, this message is typically ignored.
-// SessionConsistency, {vbnos, seqnos, crc64} are to be considered.
-// QueryConsistency, {vbnos, seqnos, vbuuids} are to be considered.
-type TsConsistency struct {
-	Vbnos            []uint32 `protobuf:"varint,1,rep,name=vbnos" json:"vbnos,omitempty"`
-	Seqnos           []uint64 `protobuf:"varint,2,rep,name=seqnos" json:"seqnos,omitempty"`
-	Vbuuids          []uint64 `protobuf:"varint,3,rep,name=vbuuids" json:"vbuuids,omitempty"`
-	Crc64            *uint64  `protobuf:"varint,4,opt,name=crc64" json:"crc64,omitempty"`
-	XXX_unrecognized []byte   `json:"-"`
-}
-
-func (m *TsConsistency) Reset()         { *m = TsConsistency{} }
-func (m *TsConsistency) String() string { return proto.CompactTextString(m) }
-func (*TsConsistency) ProtoMessage()    {}
-
-func (m *TsConsistency) GetVbnos() []uint32 {
-	if m != nil {
-		return m.Vbnos
-	}
-	return nil
-}
-
-func (m *TsConsistency) GetSeqnos() []uint64 {
-	if m != nil {
-		return m.Seqnos
-	}
-	return nil
-}
-
-func (m *TsConsistency) GetVbuuids() []uint64 {
-	if m != nil {
-		return m.Vbuuids
-	}
-	return nil
-}
-
-func (m *TsConsistency) GetCrc64() uint64 {
-	if m != nil && m.Crc64 != nil {
-		return *m.Crc64
-	}
-	return 0
 }
 
 // Request can be one of the optional field.
@@ -237,13 +192,13 @@ func (m *StatisticsResponse) GetErr() *Error {
 
 // Scan request to indexer.
 type ScanRequest struct {
-	DefnID           *uint64        `protobuf:"varint,1,req,name=defnID" json:"defnID,omitempty"`
-	Span             *Span          `protobuf:"bytes,2,req,name=span" json:"span,omitempty"`
-	Distinct         *bool          `protobuf:"varint,3,req,name=distinct" json:"distinct,omitempty"`
-	Limit            *int64         `protobuf:"varint,4,req,name=limit" json:"limit,omitempty"`
-	Cons             *uint32        `protobuf:"varint,5,req,name=cons" json:"cons,omitempty"`
-	Vector           *TsConsistency `protobuf:"bytes,6,opt,name=vector" json:"vector,omitempty"`
-	XXX_unrecognized []byte         `json:"-"`
+	DefnID           *uint64 `protobuf:"varint,1,req,name=defnID" json:"defnID,omitempty"`
+	Span             *Span   `protobuf:"bytes,2,req,name=span" json:"span,omitempty"`
+	Distinct         *bool   `protobuf:"varint,3,req,name=distinct" json:"distinct,omitempty"`
+	Limit            *int64  `protobuf:"varint,4,req,name=limit" json:"limit,omitempty"`
+	Cons             *uint32 `protobuf:"varint,5,req,name=cons" json:"cons,omitempty"`
+	Vector           []byte  `protobuf:"bytes,6,opt,name=vector" json:"vector,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
 }
 
 func (m *ScanRequest) Reset()         { *m = ScanRequest{} }
@@ -285,7 +240,7 @@ func (m *ScanRequest) GetCons() uint32 {
 	return 0
 }
 
-func (m *ScanRequest) GetVector() *TsConsistency {
+func (m *ScanRequest) GetVector() []byte {
 	if m != nil {
 		return m.Vector
 	}
@@ -294,11 +249,11 @@ func (m *ScanRequest) GetVector() *TsConsistency {
 
 // Full table scan request from indexer.
 type ScanAllRequest struct {
-	DefnID           *uint64        `protobuf:"varint,1,req,name=defnID" json:"defnID,omitempty"`
-	Limit            *int64         `protobuf:"varint,2,req,name=limit" json:"limit,omitempty"`
-	Cons             *uint32        `protobuf:"varint,3,req,name=cons" json:"cons,omitempty"`
-	Vector           *TsConsistency `protobuf:"bytes,4,opt,name=vector" json:"vector,omitempty"`
-	XXX_unrecognized []byte         `json:"-"`
+	DefnID           *uint64 `protobuf:"varint,1,req,name=defnID" json:"defnID,omitempty"`
+	Limit            *int64  `protobuf:"varint,2,req,name=limit" json:"limit,omitempty"`
+	Cons             *uint32 `protobuf:"varint,3,req,name=cons" json:"cons,omitempty"`
+	Vector           []byte  `protobuf:"bytes,4,opt,name=vector" json:"vector,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
 }
 
 func (m *ScanAllRequest) Reset()         { *m = ScanAllRequest{} }
@@ -326,7 +281,7 @@ func (m *ScanAllRequest) GetCons() uint32 {
 	return 0
 }
 
-func (m *ScanAllRequest) GetVector() *TsConsistency {
+func (m *ScanAllRequest) GetVector() []byte {
 	if m != nil {
 		return m.Vector
 	}
@@ -385,11 +340,11 @@ func (m *StreamEndResponse) GetErr() *Error {
 
 // Count request to indexer.
 type CountRequest struct {
-	DefnID           *uint64        `protobuf:"varint,1,req,name=defnID" json:"defnID,omitempty"`
-	Span             *Span          `protobuf:"bytes,2,req,name=span" json:"span,omitempty"`
-	Cons             *uint32        `protobuf:"varint,3,req,name=cons" json:"cons,omitempty"`
-	Vector           *TsConsistency `protobuf:"bytes,4,opt,name=vector" json:"vector,omitempty"`
-	XXX_unrecognized []byte         `json:"-"`
+	DefnID           *uint64 `protobuf:"varint,1,req,name=defnID" json:"defnID,omitempty"`
+	Span             *Span   `protobuf:"bytes,2,req,name=span" json:"span,omitempty"`
+	Cons             *uint32 `protobuf:"varint,3,req,name=cons" json:"cons,omitempty"`
+	Vector           []byte  `protobuf:"bytes,4,opt,name=vector" json:"vector,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
 }
 
 func (m *CountRequest) Reset()         { *m = CountRequest{} }
@@ -417,7 +372,7 @@ func (m *CountRequest) GetCons() uint32 {
 	return 0
 }
 
-func (m *CountRequest) GetVector() *TsConsistency {
+func (m *CountRequest) GetVector() []byte {
 	if m != nil {
 		return m.Vector
 	}
