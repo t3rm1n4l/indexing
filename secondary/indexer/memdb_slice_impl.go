@@ -460,6 +460,7 @@ func (mdb *memdbSlice) doPersistSnapshot(s *memdbSnapshot) {
 					mdb.cleanupOldSnapshotFiles(mdb.maxRollbacks)
 				}
 			}
+			mdb.idxStats.Timings.stCommit.Put(time.Since(t0))
 		}
 
 		logging.Infof("MemDBSlice Slice Id %v, IndexInstId %v created ondisk snapshot %v. Took %v", mdb.id, mdb.IndexInstId, dir, time.Since(t0))
@@ -627,11 +628,13 @@ func (mdb *memdbSlice) NewSnapshot(ts *common.TsVbuuid, commit bool) (SnapshotIn
 	mdb.waitPersist()
 	mdb.isDirty = false
 
+	t0 := time.Now()
 	newSnapshotInfo := &memdbSnapshotInfo{
 		Ts:        ts,
 		MainSnap:  mdb.mainstore.NewSnapshot(),
 		Committed: commit,
 	}
+	mdb.idxStats.Timings.stSnapshotCreate.Put(time.Since(t0))
 	mdb.setCommittedCount()
 
 	return newSnapshotInfo, nil
@@ -868,7 +871,9 @@ func (s *memdbSnapshot) Close() error {
 }
 
 func (s *memdbSnapshot) Destroy() {
+	t0 := time.Now()
 	s.info.MainSnap.Close()
+	s.slice.idxStats.Timings.stSnapshotClose.Put(time.Since(t0))
 
 	defer s.slice.DecrRef()
 }
@@ -985,7 +990,9 @@ func (s *memdbSnapshot) Iterate(low, high IndexKey, inclusion Inclusion,
 
 	var entry IndexEntry
 	var err error
+	t0 := time.Now()
 	it := s.info.MainSnap.NewIterator()
+	s.slice.idxStats.Timings.stNewIterator.Put(time.Since(t0))
 	defer it.Close()
 
 	if low.Bytes() == nil {
