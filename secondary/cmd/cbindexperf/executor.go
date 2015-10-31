@@ -7,6 +7,7 @@ import (
 	qclient "github.com/couchbase/indexing/secondary/queryport/client"
 	"io"
 	"math"
+	"math/rand"
 	"sync"
 	"time"
 )
@@ -101,11 +102,15 @@ func RunJob(client *qclient.GsiClient, job *Job, aggrQ chan *JobResult) {
 	}
 }
 
-func Worker(jobQ chan *Job, c *qclient.GsiClient, aggrQ chan *JobResult, wg *sync.WaitGroup) {
+func Worker(jobQ chan *Job, c *qclient.GsiClient, elapsed *time.Duration,
+	aggrQ chan *JobResult, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	for job := range jobQ {
+		time.Sleep(time.Millisecond * time.Duration(rand.Intn(100)))
+		t0 := time.Now()
 		RunJob(c, job, aggrQ)
+		*elapsed += time.Since(t0)
 	}
 }
 
@@ -145,6 +150,7 @@ func RunCommands(cluster string, cfg *Config, statsW io.Writer) (*Result, error)
 	var clients []*qclient.GsiClient
 	var jobQ chan *Job
 	var aggrQ chan *JobResult
+	var workerDur []time.Duration
 	var wg1, wg2 sync.WaitGroup
 
 	if len(cfg.LatencyBuckets) == 0 {
@@ -183,9 +189,10 @@ func RunCommands(cluster string, cfg *Config, statsW io.Writer) (*Result, error)
 
 	jobQ = make(chan *Job, cfg.Concurrency*1000)
 	aggrQ = make(chan *JobResult, cfg.Concurrency*1000)
+	workerDur = make([]time.Duration, cfg.Concurrency)
 	for i := 0; i < cfg.Concurrency; i++ {
 		wg1.Add(1)
-		go Worker(jobQ, clients[i%cfg.Clients], aggrQ, &wg1)
+		go Worker(jobQ, clients[i%cfg.Clients], &workerDur[i], aggrQ, &wg1)
 	}
 
 	wg2.Add(1)
@@ -230,6 +237,15 @@ func RunCommands(cluster string, cfg *Config, statsW io.Writer) (*Result, error)
 
 	fmt.Println("GsiClients warmed up ...")
 	result.WarmupDuration = float64(time.Since(t0).Nanoseconds()) / float64(time.Second)
+
+	var maxDur time.Duration
+	for _, dur := range workerDur {
+		if maxDur < dur {
+			maxDur = dur
+		}
+	}
+
+	result.Duration = float64(maxDur.Nanoseconds()) / float64(time.Second)
 
 	// Round robin scheduling of jobs
 	var allFinished bool

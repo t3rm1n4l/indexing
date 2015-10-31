@@ -81,17 +81,14 @@ func main() {
 		}
 	}
 
-	t0 := time.Now()
 	res, err := RunCommands(*cluster, cfg, statsW)
 	handleError(err)
-	dur := time.Now().Sub(t0)
 
 	totalRows := uint64(0)
 	for _, result := range res.ScanResults {
 		totalRows += result.Rows
 	}
 	res.Rows = totalRows
-	res.Duration = dur.Seconds() - res.WarmupDuration
 
 	rate := int(float64(totalRows) / res.Duration)
 
