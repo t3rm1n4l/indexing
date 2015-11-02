@@ -782,6 +782,12 @@ var SystemConfig = Config{
 		true,
 		false, // mutable
 	},
+	"indexer.settings.default_index_type": ConfigValue{
+		"forestdb",
+		"Default storage engine to be used",
+		"forestdb",
+		false, // mutable
+	},
 	"projector.settings.log_level": ConfigValue{
 		"info",
 		"Projector logging level",
