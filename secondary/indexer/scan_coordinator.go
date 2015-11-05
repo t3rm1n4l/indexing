@@ -12,7 +12,7 @@ package indexer
 import (
 	"errors"
 	"fmt"
-//        "runtime"
+        "runtime"
 	"github.com/couchbase/indexing/secondary/common"
 	"github.com/couchbase/indexing/secondary/logging"
 	p "github.com/couchbase/indexing/secondary/pipeline"
@@ -458,7 +458,7 @@ func (s *scanCoordinator) newRequest(protoReq interface{},
 			if *r.Consistency == common.SessionConsistency {
 				cluster := cfg["clusterAddr"].String()
 				seqnos, _ := common.BucketSeqnos(cluster, "default" , r.Bucket)
-//runtime.Gosched()
+runtime.Gosched()
 
 				//r.Ts = common.TsVbuuidPool.Get().(*common.TsVbuuid)
 				r.Ts = &common.TsVbuuid{}
