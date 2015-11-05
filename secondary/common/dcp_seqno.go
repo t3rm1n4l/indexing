@@ -6,6 +6,7 @@ import "fmt"
 import "sort"
 
 import "github.com/couchbase/indexing/secondary/dcp"
+import "github.com/couchbase/indexing/secondary/dcp/transport/client"
 import "github.com/couchbase/indexing/secondary/logging"
 
 // cache Bucket{} and DcpFeed{} objects, its underlying connections
