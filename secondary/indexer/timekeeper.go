@@ -2638,10 +2638,22 @@ func (tk *timekeeper) startTimer(streamId common.StreamId,
 	logging.Infof("Timekeeper::startTimer %v %v", streamId, bucket)
 
 	snapInterval := tk.config["settings.inmemory_snapshot.interval"].Uint64()
-	ticker := time.NewTicker(time.Millisecond * time.Duration(snapInterval))
+	//ticker := time.NewTicker(time.Millisecond * time.Duration(snapInterval))
 	stopCh := tk.ss.streamBucketTimerStopCh[streamId][bucket]
 
 	go func() {
+
+     for {
+time.Sleep(time.Millisecond * time.Duration(snapInterval))
+				tk.generateNewStabilityTS(streamId, bucket)
+select {
+case <- stopCh:
+return
+default:
+}
+
+}
+/*
 		for {
 			select {
 			case <-ticker.C:
@@ -2651,6 +2663,7 @@ func (tk *timekeeper) startTimer(streamId common.StreamId,
 				return
 			}
 		}
+*/
 	}()
 
 }

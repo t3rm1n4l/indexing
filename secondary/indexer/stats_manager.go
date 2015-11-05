@@ -74,6 +74,8 @@ type IndexStats struct {
 	insertBytes          stats.Int64Val
 	numDocsPending       stats.Int64Val
 	scanWaitDuration     stats.Int64Val
+	scanSeqWaitDuration     stats.Int64Val
+        seqWaitLat stats.Int64Val
 	numDocsIndexed       stats.Int64Val
 	numRequests          stats.Int64Val
 	numCompletedRequests stats.Int64Val
@@ -120,6 +122,8 @@ func (s *IndexStats) Init() {
 	s.insertBytes.Init()
 	s.numDocsPending.Init()
 	s.scanWaitDuration.Init()
+	s.scanSeqWaitDuration.Init()
+	s.seqWaitLat.Init()
 	s.numDocsIndexed.Init()
 	s.numRequests.Init()
 	s.numCompletedRequests.Init()
@@ -237,6 +241,7 @@ func (is IndexerStats) MarshalJSON() ([]byte, error) {
 		addStat("insert_bytes", s.insertBytes.Value())
 		addStat("num_docs_pending", s.numDocsPending.Value())
 		addStat("scan_wait_duration", s.scanWaitDuration.Value())
+		addStat("scan_seqwait_duration", s.scanSeqWaitDuration.Value())
 		addStat("num_docs_indexed", s.numDocsIndexed.Value())
 		addStat("num_requests", s.numRequests.Value())
 		addStat("num_completed_requests", s.numCompletedRequests.Value())
@@ -258,6 +263,7 @@ func (is IndexerStats) MarshalJSON() ([]byte, error) {
 		addStat("flush_queue_size", s.flushQueueSize.Value())
 		addStat("avg_scan_latency", scanLat)
 		addStat("avg_scan_wait_latency", waitLat)
+		addStat("avg_scan_seqwait_latency", s.seqWaitLat.Value())
 		addStat("num_flush_queued", s.numFlushQueued.Value())
 		addStat("since_last_snapshot", s.sinceLastSnapshot.Value())
 		addStat("num_snapshot_waiters", s.numSnapshotWaiters.Value())

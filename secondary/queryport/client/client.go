@@ -516,6 +516,7 @@ func (c *GsiClient) ScanAll(
 		return ErrorClientUninitialized
 	}
 
+/*
 	// check whether the index is present and available.
 	if _, err = c.bridge.IndexState(defnID); err != nil {
 		protoResp := &protobuf.ResponseStream{
@@ -524,7 +525,7 @@ func (c *GsiClient) ScanAll(
 		callb(protoResp)
 		return
 	}
-
+*/
 	begin := time.Now()
 
 	err = c.doScan(
@@ -726,7 +727,7 @@ func (c *GsiClient) getConsistency(
 	cons common.Consistency,
 	vector *TsConsistency, bucket string) (*TsConsistency, error) {
 
-	var err error
+//	var err error
 
 	if cons == common.QueryConsistency {
 		if vector == nil {
@@ -735,6 +736,8 @@ func (c *GsiClient) getConsistency(
 		return vector, nil
 
 	} else if cons == common.SessionConsistency {
+
+/*
 		if hash64, ok := c.getBucketHash(bucket); ok && hash64 != 0 {
 			begin := time.Now()
 			fmsg := "Time taken by GET_SEQNOS call, %v CRC: %v\n"
@@ -755,7 +758,8 @@ func (c *GsiClient) getConsistency(
 			c.setBucketHash(bucket, vector.Crc64)
 			logging.Debugf("STATS CRC: %v\n", vector.Crc64)
 		}
-
+*/
+vector = nil
 	} else if cons == common.AnyConsistency {
 		vector = nil
 

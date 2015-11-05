@@ -12,6 +12,7 @@ package indexer
 import (
 	"errors"
 	"fmt"
+//        "runtime"
 	"github.com/couchbase/indexing/secondary/common"
 	"github.com/couchbase/indexing/secondary/logging"
 	p "github.com/couchbase/indexing/secondary/pipeline"
@@ -36,8 +37,11 @@ var (
 
 var secKeyBufPool *common.BytesBufPool
 
+var seqs []uint64
+
 func init() {
 	secKeyBufPool = common.NewByteBufferPool(MAX_SEC_KEY_BUFFER_LEN)
+seqs = make([]uint64,1024)
 }
 
 type ScanReqType string
@@ -101,6 +105,7 @@ func (c *CancelCb) Run() {
 }
 
 func (c *CancelCb) Done() {
+
 	close(c.done)
 }
 
@@ -430,12 +435,8 @@ func (s *scanCoordinator) newRequest(protoReq interface{},
 				r.Ts.Seqnos[vbno] = vector.Seqnos[i]
 				r.Ts.Vbuuids[vbno] = vector.Vbuuids[i]
 			}
-
-		} else if cons == common.SessionConsistency {
-			r.Ts = common.NewTsVbuuid("", cfg["numVbuckets"].Int())
-			r.Ts.Seqnos = vector.Seqnos // full set of seqnos.
-			r.Ts.Crc64 = vector.GetCrc64()
 		}
+
 	}
 
 	setIndexParams := func() {
@@ -454,6 +455,23 @@ func (s *scanCoordinator) newRequest(protoReq interface{},
 			r.isPrimary = indexInst.Defn.IsPrimary
 			r.IndexName, r.Bucket = indexInst.Defn.Name, indexInst.Defn.Bucket
 			r.IndexInstId = indexInst.InstId
+			if *r.Consistency == common.SessionConsistency {
+				cluster := cfg["clusterAddr"].String()
+				seqnos, _ := common.BucketSeqnos(cluster, "default" , r.Bucket)
+//runtime.Gosched()
+
+				//r.Ts = common.TsVbuuidPool.Get().(*common.TsVbuuid)
+				r.Ts = &common.TsVbuuid{}
+                                //r.Ts =  common.NewTsVbuuid("", cfg["numVbuckets"].Int())
+				r.Ts.Seqnos = seqnos
+				r.Ts.Crc64 = 0
+/*
+				r.Ts = &common.TsVbuuid{}
+				r.Ts.Seqnos = seqs
+				r.Ts.Crc64 = 0
+*/
+			}
+
 			if r.Ts != nil {
 				r.Ts.Bucket = r.Bucket
 			}
@@ -537,7 +555,7 @@ func (s *scanCoordinator) getRequestedIndexSnapshot(r *ScanRequest) (snap IndexS
 
 		ss, ok := s.lastSnapshot[r.IndexInstId]
 		cons := *r.Consistency
-		if ok && ss != nil && isSnapshotConsistent(ss, cons, r.Ts) {
+		if ok && ss != nil && isSnapshotConsistent(ss, cons, r.Ts) { 
 			return CloneIndexSnapshot(ss), nil
 		}
 		return nil, nil
@@ -561,12 +579,15 @@ func (s *scanCoordinator) getRequestedIndexSnapshot(r *ScanRequest) (snap IndexS
 	// Block wait until a ts is available for fullfilling the request
 	s.supvMsgch <- snapReqMsg
 	var msg interface{}
+/*
 	select {
 	case msg = <-snapResch:
 	case <-r.TimeoutCh:
 		go readDeallocSnapshot(snapResch)
 		msg = common.ErrScanTimedOut
 	}
+*/
+	msg = <-snapResch
 
 	switch msg.(type) {
 	case IndexSnapshot:
@@ -588,7 +609,7 @@ func isSnapshotConsistent(
 			if ss.IsEpoch() && reqTs.IsEpoch() {
 				return true
 			}
-			if snapTs.CheckCrc64(reqTs) && snapTs.AsRecentTs(reqTs) {
+			if snapTs.AsRecentTs(reqTs) {
 				return true
 			}
 			// don't return error because client might be ahead of
@@ -658,6 +679,7 @@ func (s *scanCoordinator) tryRespondWithError(w ScanResponseWriter, req *ScanReq
 func (s *scanCoordinator) serverCallback(protoReq interface{}, conn net.Conn,
 	cancelCh <-chan bool) {
 
+	t0 := time.Now()
 	req, err := s.newRequest(protoReq, cancelCh)
 	w := NewProtoWriter(req.ScanType, conn)
 	defer func() {
@@ -680,7 +702,13 @@ func (s *scanCoordinator) serverCallback(protoReq interface{}, conn net.Conn,
 
 	req.Stats.numRequests.Add(1)
 
-	t0 := time.Now()
+        seqt := time.Since(t0)
+	req.Stats.scanSeqWaitDuration.Add(seqt.Nanoseconds())
+if req.Stats.seqWaitLat.Value() == 0 {
+	req.Stats.seqWaitLat.Set(seqt.Nanoseconds())
+} else {
+        req.Stats.seqWaitLat.Set((req.Stats.seqWaitLat.Value() + seqt.Nanoseconds())/2)
+}
 	is, err := s.getRequestedIndexSnapshot(req)
 	if s.tryRespondWithError(w, req, err) {
 		return

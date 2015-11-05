@@ -444,8 +444,8 @@ func (c *GsiScanClient) doRequestResponse(req interface{}) (interface{}, error) 
 	}
 
 	laddr := conn.LocalAddr()
-	timeoutMs := c.readDeadline * time.Millisecond
-	conn.SetReadDeadline(time.Now().Add(timeoutMs))
+	//timeoutMs := c.readDeadline * time.Millisecond
+	//conn.SetReadDeadline(time.Now().Add(timeoutMs))
 	// <--- protobuf.*Response
 	resp, err := pkt.Receive(conn)
 	if err != nil {
@@ -455,7 +455,7 @@ func (c *GsiScanClient) doRequestResponse(req interface{}) (interface{}, error) 
 		return nil, err
 	}
 
-	conn.SetReadDeadline(time.Now().Add(timeoutMs))
+	//conn.SetReadDeadline(time.Now().Add(timeoutMs))
 	// <--- protobuf.StreamEndResponse (skipped) TODO: knock this off.
 	if endResp, err := pkt.Receive(conn); err != nil {
 		fmsg := "%v connection %v response %T transport failed `%v`\n"
@@ -472,8 +472,8 @@ func (c *GsiScanClient) doRequestResponse(req interface{}) (interface{}, error) 
 func (c *GsiScanClient) sendRequest(
 	conn net.Conn, pkt *transport.TransportPacket, req interface{}) (err error) {
 
-	timeoutMs := c.writeDeadline * time.Millisecond
-	conn.SetWriteDeadline(time.Now().Add(timeoutMs))
+	//timeoutMs := c.writeDeadline * time.Millisecond
+	//conn.SetWriteDeadline(time.Now().Add(timeoutMs))
 	return pkt.Send(conn, req)
 }
 
@@ -486,8 +486,8 @@ func (c *GsiScanClient) streamResponse(
 	var finish bool
 
 	laddr := conn.LocalAddr()
-	timeoutMs := c.readDeadline * time.Millisecond
-	conn.SetReadDeadline(time.Now().Add(timeoutMs))
+	//timeoutMs := c.readDeadline * time.Millisecond
+	//conn.SetReadDeadline(time.Now().Add(timeoutMs))
 	if resp, err = pkt.Receive(conn); err != nil {
 		//resp := &protobuf.ResponseStream{
 		//    Err: &protobuf.Error{Error: proto.String(err.Error())},
@@ -543,10 +543,10 @@ func (c *GsiScanClient) closeStream(
 	fmsg := "%v connection %q transmitted protobuf.EndStreamRequest"
 	logging.Tracef(fmsg, c.logPrefix, laddr)
 
-	timeoutMs := c.readDeadline * time.Millisecond
+	//timeoutMs := c.readDeadline * time.Millisecond
 	// flush the connection until stream has ended.
 	for true {
-		conn.SetReadDeadline(time.Now().Add(timeoutMs))
+		//conn.SetReadDeadline(time.Now().Add(timeoutMs))
 		resp, err = pkt.Receive(conn)
 		if err != nil {
 			healthy = false

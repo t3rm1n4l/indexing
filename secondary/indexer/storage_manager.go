@@ -439,6 +439,7 @@ func (s *storageMgr) updateSnapMapAndNotify(is IndexSnapshot, idxStats *IndexSta
 		}
 
 		if isSnapshotConsistent(is, w.cons, w.ts) {
+                 //if true {
 			w.Notify(CloneIndexSnapshot(is))
 			numReplies++
 			idxStats.numSnapshotWaiters.Add(-1)

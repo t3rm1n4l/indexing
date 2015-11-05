@@ -605,12 +605,17 @@ func (mdb *memdbSlice) waitPersist() {
 		//every SLICE_COMMIT_POLL_INTERVAL milliseconds,
 		//check for outstanding mutations. If there are
 		//none, proceed with the commit.
+/*
 		mdb.confLock.Lock()
 		commitPollInterval := mdb.sysconf["storage.commitPollInterval"].Uint64()
 		mdb.confLock.Unlock()
 
 		ticker := time.NewTicker(time.Millisecond * time.Duration(commitPollInterval))
+
 		for _ = range ticker.C {
+*/
+
+for {
 			if mdb.checkAllWorkersDone() {
 				break
 			}

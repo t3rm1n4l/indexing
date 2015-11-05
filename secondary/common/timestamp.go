@@ -54,14 +54,14 @@ func newTsVbuuid() interface{} {
 	}
 }
 
-var tsVbuuidPool = sync.Pool{New: newTsVbuuid}
-var NUM_VBUCKETS int
+var TsVbuuidPool = sync.Pool{New: newTsVbuuid}
+var NUM_VBUCKETS int = 1024
 
 func NewTsVbuuidCached(bucket string, numVbuckets int) *TsVbuuid {
 
 	NUM_VBUCKETS = numVbuckets
 
-	ts := tsVbuuidPool.Get().(*TsVbuuid)
+	ts := TsVbuuidPool.Get().(*TsVbuuid)
 
 	//re-init
 	for i, _ := range ts.Vbuuids {
@@ -76,7 +76,7 @@ func NewTsVbuuidCached(bucket string, numVbuckets int) *TsVbuuid {
 }
 
 func (ts *TsVbuuid) Free() {
-	tsVbuuidPool.Put(ts)
+	TsVbuuidPool.Put(ts)
 }
 
 // GetVbnos will return the list of all vbnos.

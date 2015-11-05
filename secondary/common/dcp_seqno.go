@@ -1,9 +1,9 @@
 package common
 
 import "sync"
-import "time"
 import "fmt"
 import "sort"
+import "time"
 
 import "github.com/couchbase/indexing/secondary/dcp"
 import "github.com/couchbase/indexing/secondary/logging"
@@ -48,7 +48,7 @@ type vbSeqnosReader struct {
 func newVbSeqnosReader(kvfeeds map[string]*couchbase.DcpFeed) *vbSeqnosReader {
 	r := &vbSeqnosReader{
 		kvfeeds:   kvfeeds,
-		requestCh: make(chan vbSeqnosRequest, 5000),
+		requestCh: make(chan vbSeqnosRequest, 20000),
 	}
 
 	go r.Routine()
@@ -70,7 +70,9 @@ func (r *vbSeqnosReader) GetSeqnos() ([]uint64, error) {
 func (r *vbSeqnosReader) Routine() {
 	for req := range r.requestCh {
 		l := len(r.requestCh)
+//t0 := time.Now()
 		seqnos, err := CollectSeqnos(r.kvfeeds)
+//fmt.Println("seqtime", time.Since(t0))
 		response := &vbSeqnosResponse{
 			seqnos: seqnos,
 			err:    err,
@@ -190,6 +192,7 @@ func delDBSbucket(bucketn string) {
 // in both the cases if the call is retried it should get fixed, provided
 // a valid bucket exists.
 func BucketSeqnos(cluster, pooln, bucketn string) (l_seqnos []uint64, err error) {
+//t0 := time.Now()
 	// any type of error will cleanup the bucket and its kvfeeds.
 	defer func() {
 		if err != nil {
@@ -200,11 +203,14 @@ func BucketSeqnos(cluster, pooln, bucketn string) (l_seqnos []uint64, err error)
 	var reader *vbSeqnosReader
 
 	reader, err = func() (*vbSeqnosReader, error) {
+
+
+		dcp_buckets_seqnos.rw.RLock()
+		reader, ok := dcp_buckets_seqnos.readerMap[bucketn]
+		dcp_buckets_seqnos.rw.RUnlock()
+		if !ok { // no {bucket,kvfeeds} found, create!
 		dcp_buckets_seqnos.rw.Lock()
 		defer dcp_buckets_seqnos.rw.Unlock()
-
-		reader, ok := dcp_buckets_seqnos.readerMap[bucketn]
-		if !ok { // no {bucket,kvfeeds} found, create!
 			if err = addDBSbucket(cluster, pooln, bucketn); err != nil {
 				return nil, err
 			}
@@ -216,7 +222,9 @@ func BucketSeqnos(cluster, pooln, bucketn string) (l_seqnos []uint64, err error)
 		return nil, err
 	}
 
+//t1 := time.Now()
 	l_seqnos, err = reader.GetSeqnos()
+//fmt.Println("seqtook", time.Since(t0), time.Since(t1))
 	return
 }
 

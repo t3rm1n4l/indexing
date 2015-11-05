@@ -232,6 +232,9 @@ func (b *metadataClient) GetScanport(
 	defnID uint64,
 	retry int) (queryport string, targetDefnID uint64, ok bool) {
 
+return "172.16.12.41:9101", defnID, true
+/*
+
 	b.rw.RLock()
 	defer b.rw.RUnlock()
 
@@ -248,10 +251,12 @@ func (b *metadataClient) GetScanport(
 	fmsg := "Scan port %s for index defnID %d of equivalent index defnId %d"
 	logging.Debugf(fmsg, queryport, targetDefnID, defnID)
 	return queryport, targetDefnID, true
+*/
 }
 
 // Timeit implement BridgeAccessor{} interface.
 func (b *metadataClient) Timeit(defnID uint64, value float64) {
+/*
 	b.rw.Lock()
 	defer b.rw.Unlock()
 
@@ -266,7 +271,9 @@ func (b *metadataClient) Timeit(defnID uint64, value float64) {
 			load.avgLoad = (load.avgLoad + float64(value)) / 2.0
 		}
 		load.count += 1
+
 	}
+*/
 }
 
 // IsPrimary implement BridgeAccessor{} interface.

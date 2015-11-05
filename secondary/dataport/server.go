@@ -532,8 +532,8 @@ func doReceive(
 	tick := time.Tick(time.Second * 5) // log every 5 second, if blocked
 loop:
 	for {
-		timeoutMs := readDeadline * time.Millisecond
-		conn.SetReadDeadline(time.Now().Add(timeoutMs))
+		//timeoutMs := readDeadline * time.Millisecond
+		//conn.SetReadDeadline(time.Now().Add(timeoutMs))
 		msg.cmd, msg.err, msg.args = 0, nil, nil
 		if payload, err := pkt.Receive(conn); err != nil {
 			msg.cmd, msg.err = serverCmdError, err
