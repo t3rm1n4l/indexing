@@ -77,7 +77,9 @@ func (r *vbSeqnosReader) GetSeqnos() ([]uint64, error) {
 func (r *vbSeqnosReader) Routine() {
 	for req := range r.requestCh {
 		l := len(r.requestCh)
+                //t0 := time.Now()
 		seqnos, err := CollectSeqnos(r.kvfeeds)
+                //fmt.Println("seqtime", l+1, time.Since(t0))
 		response := &vbSeqnosResponse{
 			seqnos: seqnos,
 			err:    err,
@@ -222,7 +224,9 @@ func BucketSeqnos(cluster, pooln, bucketn string) (l_seqnos []uint64, err error)
 		return nil, err
 	}
 
+        //t0 := time.Now()
 	l_seqnos, err = reader.GetSeqnos()
+        //fmt.Println("seqget", time.Since(t0))
 	return
 }
 
