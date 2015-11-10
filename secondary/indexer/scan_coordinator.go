@@ -12,7 +12,7 @@ package indexer
 import (
 	"errors"
 	"fmt"
-        "runtime"
+ //       "runtime"
 	"github.com/couchbase/indexing/secondary/common"
 	"github.com/couchbase/indexing/secondary/logging"
 	p "github.com/couchbase/indexing/secondary/pipeline"
@@ -23,6 +23,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+//"runtime/debug"
 	"time"
 )
 
@@ -41,6 +42,7 @@ var seqs []uint64
 
 func init() {
 	secKeyBufPool = common.NewByteBufferPool(MAX_SEC_KEY_BUFFER_LEN)
+//debug.SetGCPercent(500)
 seqs = make([]uint64,1024)
 }
 
@@ -458,7 +460,8 @@ func (s *scanCoordinator) newRequest(protoReq interface{},
 			if *r.Consistency == common.SessionConsistency {
 				cluster := cfg["clusterAddr"].String()
 				seqnos, _ := common.BucketSeqnos(cluster, "default" , r.Bucket)
-runtime.Gosched()
+                                //time.Sleep(time.Duration(4) * time.Millisecond)
+//runtime.Gosched()
 
 				//r.Ts = common.TsVbuuidPool.Get().(*common.TsVbuuid)
 				r.Ts = &common.TsVbuuid{}
