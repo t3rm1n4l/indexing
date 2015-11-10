@@ -49,13 +49,13 @@ func (ch *vbSeqnosRequest) Response() ([]uint64, error) {
 // Bucket level seqnos reader for the cluster
 type vbSeqnosReader struct {
 	kvfeeds   map[string]*kvConn
-	requestCh chan vbSeqnosRequest
+	requestCh *SPMCQueue
 }
 
 func newVbSeqnosReader(kvfeeds map[string]*kvConn) *vbSeqnosReader {
 	r := &vbSeqnosReader{
 		kvfeeds:   kvfeeds,
-		requestCh: make(chan vbSeqnosRequest, 20000),
+		requestCh: NewSPMC(),
 	}
 
 	go r.Routine()
@@ -63,22 +63,25 @@ func newVbSeqnosReader(kvfeeds map[string]*kvConn) *vbSeqnosReader {
 }
 
 func (r *vbSeqnosReader) Close() {
-	close(r.requestCh)
 }
 
 func (r *vbSeqnosReader) GetSeqnos() ([]uint64, error) {
 	req := make(vbSeqnosRequest, 1)
-	r.requestCh <- req
+	r.requestCh.Push(req)
 	return req.Response()
 }
 
 // This routine is responsible for computing request batches on the fly
 // and issue single 'dcp seqno' per batch.
 func (r *vbSeqnosReader) Routine() {
-	for req := range r.requestCh {
-		l := len(r.requestCh)
+	//for req := range r.requestCh {
+        for {
+		//l := len(r.requestCh)
+                req := (r.requestCh.Pop()).(vbSeqnosRequest)
+                l := int(r.requestCh.Size())
                 //t0 := time.Now()
 		seqnos, err := CollectSeqnos(r.kvfeeds)
+                
                 //fmt.Println("seqtime", l+1, time.Since(t0))
 		response := &vbSeqnosResponse{
 			seqnos: seqnos,
@@ -89,7 +92,8 @@ func (r *vbSeqnosReader) Routine() {
 		// Read outstanding requests that can be served by
 		// using the same response
 		for i := 0; i < l; i++ {
-			req := <-r.requestCh
+		//	req := <-r.requestCh
+                req := (r.requestCh.Pop()).(vbSeqnosRequest)
 			req.Reply(response)
 		}
 	}
