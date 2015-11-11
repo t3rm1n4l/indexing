@@ -9,8 +9,6 @@ type Node struct {
 	v    interface{}
 }
 
-var dummy = unsafe.Pointer(&Node{})
-
 type SPMCQueue struct {
 	head unsafe.Pointer
 	tail unsafe.Pointer
@@ -18,6 +16,7 @@ type SPMCQueue struct {
 }
 
 func NewSPMC() *SPMCQueue {
+        dummy := unsafe.Pointer(&Node{})
 	return &SPMCQueue{head: dummy, tail: dummy}
 }
 

@@ -35,14 +35,17 @@ type kvConn struct {
  tmpbuf []byte
 }
 
-type vbSeqnosRequest chan *vbSeqnosResponse
+type vbSeqnosRequest struct {
+	SPMCQueue
+}
 
 func (ch *vbSeqnosRequest) Reply(response *vbSeqnosResponse) {
-	*ch <- response
+	ch.Push(response)
 }
 
 func (ch *vbSeqnosRequest) Response() ([]uint64, error) {
-	response := <-*ch
+pop := ch.Pop()
+	response := pop.(*vbSeqnosResponse)
 	return response.seqnos, response.err
 }
 
@@ -66,7 +69,7 @@ func (r *vbSeqnosReader) Close() {
 }
 
 func (r *vbSeqnosReader) GetSeqnos() ([]uint64, error) {
-	req := make(vbSeqnosRequest, 1)
+	req := &vbSeqnosRequest{SPMCQueue:*NewSPMC()}
 	r.requestCh.Push(req)
 	return req.Response()
 }
@@ -77,7 +80,7 @@ func (r *vbSeqnosReader) Routine() {
 	//for req := range r.requestCh {
         for {
 		//l := len(r.requestCh)
-                req := (r.requestCh.Pop()).(vbSeqnosRequest)
+                req := (r.requestCh.Pop()).(*vbSeqnosRequest)
                 l := int(r.requestCh.Size())
                 //t0 := time.Now()
 		seqnos, err := CollectSeqnos(r.kvfeeds)
@@ -93,7 +96,7 @@ func (r *vbSeqnosReader) Routine() {
 		// using the same response
 		for i := 0; i < l; i++ {
 		//	req := <-r.requestCh
-                req := (r.requestCh.Pop()).(vbSeqnosRequest)
+                req := (r.requestCh.Pop()).(*vbSeqnosRequest)
 			req.Reply(response)
 		}
 	}
