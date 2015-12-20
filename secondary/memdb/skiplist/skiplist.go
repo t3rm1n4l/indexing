@@ -2,6 +2,7 @@ package skiplist
 
 import (
 	"math/rand"
+	"reflect"
 	"sync/atomic"
 	"unsafe"
 )
@@ -9,11 +10,12 @@ import (
 const MaxLevel = 32
 const p = 0.25
 
-type Item interface {
-	Size() int
-}
+type CompareFn func(unsafe.Pointer, unsafe.Pointer) int
+type ItemSizeFn func(unsafe.Pointer) int
 
-type CompareFn func(Item, Item) int
+func defaultItemSize(unsafe.Pointer) int {
+	return 0
+}
 
 type Skiplist struct {
 	head      *Node
@@ -22,8 +24,7 @@ type Skiplist struct {
 	stats     stats
 	usedBytes int64
 
-	// Do not use item size for usedBytes computation
-	ignoreItemSize bool
+	itemSize ItemSizeFn
 }
 
 func New() *Skiplist {
@@ -35,20 +36,21 @@ func New() *Skiplist {
 	}
 
 	s := &Skiplist{
-		head: head,
-		tail: tail,
+		head:     head,
+		tail:     tail,
+		itemSize: defaultItemSize,
 	}
 
 	return s
 }
 
-func (s *Skiplist) IgnoreItemSize() {
-	s.ignoreItemSize = true
-}
-
 type ActionBuffer struct {
 	preds []*Node
 	succs []*Node
+}
+
+func (s *Skiplist) SetItemSizeFunc(fn ItemSizeFn) {
+	s.itemSize = fn
 }
 
 func (s *Skiplist) MakeBuf() *ActionBuffer {
@@ -63,30 +65,18 @@ func (s *Skiplist) FreeBuf(b *ActionBuffer) {
 }
 
 type Node struct {
-	next   []unsafe.Pointer
-	itm    atomic.Value
+	next   unsafe.Pointer
+	itm    unsafe.Pointer
 	GClink *Node
 }
 
-func (n Node) Level() int {
-	return int(len(n.next) - 1)
+func (n *Node) Level() int {
+	level := (*uint64)(n.next)
+	return int((*level << 8) >> 8)
 }
 
-func (s *Skiplist) ResetItem(n *Node, itm Item) (deltaSz int) {
-	if !s.ignoreItemSize {
-		deltaSz = itm.Size() - n.Item().Size()
-	}
-	n.itm.Store(itm)
-
-	return
-}
-
-func (n *Node) Item() Item {
-	itm := n.itm.Load()
-	if itm != nil {
-		return itm.(Item)
-	}
-	return nil
+func (n *Node) Item() unsafe.Pointer {
+	return n.itm
 }
 
 func (n *Node) SetLink(l *Node) {
@@ -98,58 +88,73 @@ func (n *Node) GetLink() *Node {
 }
 
 type NodeRef struct {
-	deleted bool
+	deleted uint64
 	ptr     *Node
 }
 
-func newNode(itm Item, level int) *Node {
+func newNode(itm unsafe.Pointer, level int) *Node {
+	s := make([]NodeRef, level+1)
+	*(*uint64)(unsafe.Pointer(&s[0])) = uint64(level)
+
 	n := &Node{
-		next: make([]unsafe.Pointer, level+1),
+		next: unsafe.Pointer(&s[0]),
 	}
 
-	if itm != nil {
-		n.itm.Store(itm)
-	}
-
+	n.itm = itm
 	return n
 }
 
 func (n *Node) setNext(level int, ptr *Node, deleted bool) {
-	n.next[level] = unsafe.Pointer(&NodeRef{ptr: ptr, deleted: deleted})
+	var next []NodeRef
+	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&next))
+	hdr.Data = uintptr(n.next)
+	hdr.Len = level + 1
+	hdr.Cap = hdr.Len
+
+	next[level].ptr = ptr
 }
 
 func (n *Node) getNext(level int) (*Node, bool) {
-	ref := (*NodeRef)(atomic.LoadPointer(&n.next[level]))
-	if ref != nil {
-		return ref.ptr, ref.deleted
-	}
+	var next []NodeRef
+	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&next))
+	hdr.Data = uintptr(n.next)
+	hdr.Len = level + 1
+	hdr.Cap = hdr.Len
 
-	return nil, false
+	addr := (*uint64)(unsafe.Pointer(uintptr(unsafe.Pointer(&next[level])) + uintptr(7)))
+	v := atomic.LoadUint64(addr)
+	deleted := v&0xff == 0xff
+	ptr := (*Node)(unsafe.Pointer(uintptr(v >> 8)))
+	return ptr, deleted
 }
 
 func (n *Node) dcasNext(level int, prevPtr, newPtr *Node, prevIsdeleted, newIsdeleted bool) bool {
-	var swapped bool
-	addr := &n.next[level]
-	ref := (*NodeRef)(atomic.LoadPointer(addr))
-	if ref != nil {
-		if ref.ptr == prevPtr && ref.deleted == prevIsdeleted {
-			swapped = atomic.CompareAndSwapPointer(addr, unsafe.Pointer(ref),
-				unsafe.Pointer(&NodeRef{ptr: newPtr, deleted: newIsdeleted}))
-		}
+	var s reflect.SliceHeader
+	s.Data = uintptr(n.next)
+	s.Len = n.Level() + 1
+	s.Cap = s.Len
+	next := *(*[]NodeRef)(unsafe.Pointer(&s))
+
+	addr := (*uint64)(unsafe.Pointer(uintptr(unsafe.Pointer(&next[level])) + uintptr(7)))
+
+	prevVal := uint64(uintptr(unsafe.Pointer(prevPtr)) << 8)
+	if prevIsdeleted {
+		prevVal |= 0xff
 	}
 
-	return swapped
+	newVal := uint64(uintptr(unsafe.Pointer(newPtr)) << 8)
+	if newIsdeleted {
+		newVal |= 0xff
+	}
+
+	return atomic.CompareAndSwapUint64(addr, prevVal, newVal)
 }
 
 func (s *Skiplist) Size(n *Node) int {
 	var ref NodeRef
 	var next *Node
 
-	itmSz := uintptr(0)
-
-	if !s.ignoreItemSize {
-		itmSz = uintptr(n.Item().Size())
-	}
+	itmSz := uintptr(s.itemSize(n.Item()))
 
 	return int(
 		unsafe.Sizeof(n.next) +
@@ -157,10 +162,6 @@ func (s *Skiplist) Size(n *Node) int {
 			itmSz +
 			unsafe.Sizeof(n.GClink) +
 			(unsafe.Sizeof(next)+unsafe.Sizeof(ref))*uintptr(n.Level()+1))
-}
-
-func (s *Skiplist) AdjustUsedBytes(adj int) {
-	atomic.AddInt64(&s.usedBytes, -int64(adj))
 }
 
 func (s *Skiplist) NewLevel(randFn func() float32) int {
@@ -195,7 +196,7 @@ func (s *Skiplist) helpDelete(level int, prev, curr, next *Node) bool {
 	return success
 }
 
-func (s *Skiplist) FindPath(itm Item, cmp CompareFn,
+func (s *Skiplist) FindPath(itm unsafe.Pointer, cmp CompareFn,
 	buf *ActionBuffer) (foundNode *Node) {
 	var cmpVal int = 1
 
@@ -236,18 +237,18 @@ retry:
 	return
 }
 
-func (s *Skiplist) Insert(itm Item, cmp CompareFn, buf *ActionBuffer) (success bool) {
+func (s *Skiplist) Insert(itm unsafe.Pointer, cmp CompareFn, buf *ActionBuffer) (success bool) {
 	_, success = s.Insert2(itm, cmp, buf, rand.Float32)
 	return
 }
 
-func (s *Skiplist) Insert2(itm Item, cmp CompareFn,
+func (s *Skiplist) Insert2(itm unsafe.Pointer, cmp CompareFn,
 	buf *ActionBuffer, randFn func() float32) (*Node, bool) {
 	itemLevel := s.NewLevel(randFn)
 	return s.Insert3(itm, cmp, buf, itemLevel, false)
 }
 
-func (s *Skiplist) Insert3(itm Item, cmp CompareFn,
+func (s *Skiplist) Insert3(itm unsafe.Pointer, cmp CompareFn,
 	buf *ActionBuffer, itemLevel int, skipFindPath bool) (*Node, bool) {
 
 	x := newNode(itm, itemLevel)
@@ -302,7 +303,7 @@ func (s *Skiplist) softDelete(delNode *Node) bool {
 	return deleteMarked
 }
 
-func (s *Skiplist) Delete(itm Item, cmp CompareFn, buf *ActionBuffer) bool {
+func (s *Skiplist) Delete(itm unsafe.Pointer, cmp CompareFn, buf *ActionBuffer) bool {
 	found := s.FindPath(itm, cmp, buf) != nil
 	if !found {
 		return false
@@ -322,10 +323,10 @@ func (s *Skiplist) DeleteNode(n *Node, cmp CompareFn, buf *ActionBuffer) bool {
 	return false
 }
 
-func (s *Skiplist) GetRangeSplitItems(nways int) []Item {
+func (s *Skiplist) GetRangeSplitItems(nways int) []unsafe.Pointer {
 	var deleted bool
 repeat:
-	var itms []Item
+	var itms []unsafe.Pointer
 	var finished bool
 
 	l := int(atomic.LoadInt32(&s.level))
