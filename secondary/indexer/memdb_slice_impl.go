@@ -169,8 +169,10 @@ func NewMemDBSlice(path string, sliceId SliceId, idxDefnId common.IndexDefnId,
 }
 
 func (slice *memdbSlice) initStores() {
-	slice.mainstore = memdb.New()
-	slice.mainstore.SetKeyComparator(byteItemCompare)
+	mdbCfg := memdb.DefaultConfig()
+	mdbCfg.SetKeyComparator(byteItemCompare)
+	mdbCfg.UseMemoryMgmt()
+	slice.mainstore = memdb.NewWithConfig(mdbCfg)
 	slice.main = make([]*memdb.Writer, slice.numWriters)
 	for i := 0; i < slice.numWriters; i++ {
 		slice.main[i] = slice.mainstore.NewWriter()

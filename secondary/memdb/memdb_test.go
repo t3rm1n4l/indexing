@@ -72,7 +72,9 @@ func doInsert(db *MemDB, wg *sync.WaitGroup, n int, isRand bool, shouldSnap bool
 
 func TestInsertPerf(t *testing.T) {
 	var wg sync.WaitGroup
-	db := New()
+	cfg := DefaultConfig()
+	cfg.UseMemoryMgmt()
+	db := NewWithConfig(cfg)
 	defer db.Close()
 	n := 1000000
 	t0 := time.Now()

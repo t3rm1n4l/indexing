@@ -12,7 +12,6 @@ import (
 	"math/rand"
 	"os"
 	"path"
-	"reflect"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -73,66 +72,6 @@ func DefaultConfig() Config {
 	cfg.SetKeyComparator(defaultKeyCmp)
 	cfg.SetFileType(RawdbFile)
 	return cfg
-}
-
-type Item struct {
-	bornSn, deadSn uint32
-	dataPtr        unsafe.Pointer
-	dataLen        int
-}
-
-func (itm *Item) Encode(buf []byte, w io.Writer) error {
-	l := 2
-	if len(buf) < l {
-		return ErrNotEnoughSpace
-	}
-
-	binary.BigEndian.PutUint16(buf[0:2], uint16(itm.dataLen))
-	if _, err := w.Write(buf[0:2]); err != nil {
-		return err
-	}
-	if _, err := w.Write(itm.Bytes()); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (itm *Item) Decode(buf []byte, r io.Reader) error {
-	if _, err := io.ReadFull(r, buf[0:2]); err != nil {
-		return err
-	}
-	l := binary.BigEndian.Uint16(buf[0:2])
-	if l > 0 {
-		data := make([]byte, int(l))
-		_, err := io.ReadFull(r, data)
-		itm.dataLen = int(l)
-		itm.dataPtr = unsafe.Pointer(&data[0])
-		return err
-	}
-
-	return nil
-}
-
-func (itm *Item) Bytes() (bs []byte) {
-	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&bs))
-	hdr.Data = uintptr(itm.dataPtr)
-	hdr.Len = itm.dataLen
-	hdr.Cap = hdr.Len
-	return
-}
-
-func ItemSize(p unsafe.Pointer) int {
-	itm := (*Item)(p)
-	return int(unsafe.Sizeof(itm.bornSn)+unsafe.Sizeof(itm.deadSn)+
-		unsafe.Sizeof(itm.dataPtr)+unsafe.Sizeof(itm.dataLen)) + itm.dataLen
-}
-
-func NewItem(data []byte) *Item {
-	return &Item{
-		dataPtr: unsafe.Pointer(&data[0]),
-		dataLen: len(data),
-	}
 }
 
 func newInsertCompare(keyCmp KeyCompare) skiplist.CompareFn {
@@ -212,6 +151,9 @@ func (w *Writer) DeleteNode(x *skiplist.Node) (success bool) {
 	gotItem := (*Item)(x.Item())
 	if gotItem.bornSn == sn {
 		success = w.store.DeleteNode(x, w.insCmp, w.buf)
+
+		barrier := w.store.GetAccesBarrier()
+		barrier.FlushSession(x)
 		return
 	}
 
@@ -276,6 +218,8 @@ type Config struct {
 	ignoreItemSize bool
 
 	fileType FileType
+
+	useMemoryMgmt bool
 }
 
 func (cfg *Config) SetKeyComparator(cmp KeyCompare) {
@@ -299,6 +243,10 @@ func (cfg *Config) IgnoreItemSize() {
 	cfg.ignoreItemSize = true
 }
 
+func (cfg *Config) UseMemoryMgmt() {
+	cfg.useMemoryMgmt = true
+}
+
 type MemDB struct {
 	id           int
 	store        *skiplist.Skiplist
@@ -310,21 +258,32 @@ type MemDB struct {
 	leastUnrefSn uint32
 	count        int64
 
-	wlist  *Writer
-	gcchan chan *skiplist.Node
+	wlist    *Writer
+	gcchan   chan *skiplist.Node
+	freechan chan *skiplist.Node
 
 	Config
 }
 
 func NewWithConfig(cfg Config) *MemDB {
 	m := &MemDB{
-		store:       skiplist.New(),
 		snapshots:   skiplist.New(),
 		gcsnapshots: skiplist.New(),
 		currSn:      1,
 		Config:      cfg,
 		gcchan:      make(chan *skiplist.Node, gcchanBufSize),
 		id:          int(atomic.AddInt64(&dbInstancesCount, 1)),
+	}
+
+	if m.useMemoryMgmt {
+		m.store = skiplist.NewWithMM(
+			skiplist.AllocNodeMM,
+			skiplist.FreeNodeMM,
+			m.newMMBarrierCallback())
+
+		m.freechan = make(chan *skiplist.Node, gcchanBufSize)
+	} else {
+		m.store = skiplist.New()
 	}
 
 	m.initSizeFuns()
@@ -334,6 +293,13 @@ func NewWithConfig(cfg Config) *MemDB {
 
 	return m
 
+}
+
+func (m *MemDB) newMMBarrierCallback() skiplist.BarrierSessionCallback {
+	return func(inf interface{}) {
+		freelist := inf.(*skiplist.Node)
+		m.freechan <- freelist
+	}
 }
 
 func (m *MemDB) initSizeFuns() {
@@ -354,6 +320,9 @@ func (m *MemDB) MemoryInUse() int64 {
 
 func (m *MemDB) Close() {
 	close(m.gcchan)
+	if m.useMemoryMgmt {
+		close(m.freechan)
+	}
 	buf := dbInstances.MakeBuf()
 	defer dbInstances.FreeBuf(buf)
 	dbInstances.Delete(unsafe.Pointer(m), CompareMemDB, buf)
@@ -392,6 +361,9 @@ func (m *MemDB) NewWriter() *Writer {
 	m.wlist = w
 
 	go m.collectionWorker()
+	if m.useMemoryMgmt {
+		go m.freeWorker()
+	}
 
 	return w
 }
@@ -550,6 +522,7 @@ func (it *Iterator) Next() {
 func (it *Iterator) Close() {
 	it.snap.Close()
 	it.snap.db.store.FreeBuf(it.buf)
+	it.iter.Close()
 }
 
 func (m *MemDB) NewIterator(snap *Snapshot) *Iterator {
@@ -575,6 +548,17 @@ func (m *MemDB) collectionWorker() {
 	for gclist := range m.gcchan {
 		for n := gclist; n != nil; n = n.GClink {
 			m.store.DeleteNode(n, m.insCmp, buf)
+		}
+
+		barrier := m.store.GetAccesBarrier()
+		barrier.FlushSession(gclist)
+	}
+}
+
+func (m *MemDB) freeWorker() {
+	for freelist := range m.freechan {
+		for n := freelist; n != nil; n = n.GClink {
+			m.store.Free(n)
 		}
 	}
 }
@@ -634,18 +618,25 @@ func (m *MemDB) Visitor(snap *Snapshot, callb VisitorCallback, shards int, concu
 
 	iters = append(iters, m.NewIterator(snap))
 	iters[0].SeekFirst()
-	pivots := m.store.GetRangeSplitItems(shards)
-	for _, p := range pivots {
-		iter := m.NewIterator(snap)
-		iter.Seek((*Item)(p))
 
-		if iter.Valid() && (len(lastNodes) == 0 || iter.GetNode() != lastNodes[len(lastNodes)-1]) {
-			iters = append(iters, iter)
-			lastNodes = append(lastNodes, iter.GetNode())
-		} else {
-			iter.Close()
+	func() {
+		barrier := m.store.GetAccesBarrier()
+		token := barrier.Acquire()
+		defer barrier.Release(token)
+
+		pivots := m.store.GetRangeSplitItems(shards)
+		for _, p := range pivots {
+			iter := m.NewIterator(snap)
+			iter.Seek((*Item)(p))
+
+			if iter.Valid() && (len(lastNodes) == 0 || iter.GetNode() != lastNodes[len(lastNodes)-1]) {
+				iters = append(iters, iter)
+				lastNodes = append(lastNodes, iter.GetNode())
+			} else {
+				iter.Close()
+			}
 		}
-	}
+	}()
 
 	lastNodes = append(lastNodes, nil)
 	errors := make([]error, len(iters))
