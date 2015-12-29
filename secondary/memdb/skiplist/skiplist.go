@@ -22,6 +22,7 @@ type DestroyNodeFn func(*Node)
 type Skiplist struct {
 	head      *Node
 	tail      *Node
+	freec     int32
 	level     int32
 	stats     stats
 	usedBytes int64
@@ -66,6 +67,7 @@ func (s *Skiplist) GetAccesBarrier() *AccessBarrier {
 }
 
 func (s *Skiplist) Free(n *Node) {
+	atomic.AddInt32(&s.freec, 1)
 	s.freeNode(n)
 }
 

@@ -11,6 +11,7 @@ type StatsReport struct {
 	NodeCount           int
 	SoftDeletes         int64
 	Memory              int64
+	FreeC               int32
 }
 
 type stats struct {
@@ -27,9 +28,10 @@ func (s StatsReport) String() string {
 			"read_conflicts         = %d\n"+
 			"insert_conflicts       = %d\n"+
 			"next_pointers_per_node = %.4f\n"+
+			"freec %d\n"+
 			"memory_used            = %d\n\n",
 		s.NodeCount, s.SoftDeletes, s.ReadConflicts, s.InsertConflicts,
-		s.NextPointersPerNode, s.Memory)
+		s.FreeC, s.NextPointersPerNode, s.Memory)
 
 	str += "level_node_distribution:\n"
 
@@ -46,6 +48,7 @@ func (s *Skiplist) GetStats() StatsReport {
 	var totalNodes int
 	report.ReadConflicts = s.stats.readConflicts
 	report.InsertConflicts = s.stats.insertConflicts
+	report.FreeC = s.freec
 
 	for i, c := range s.stats.levelNodesCount {
 		totalNodes += int(c)
