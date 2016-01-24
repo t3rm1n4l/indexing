@@ -107,27 +107,13 @@ func (e *primaryIndexEntry) String() string {
 type secondaryIndexEntry []byte
 
 func NewSecondaryIndexEntry(key []byte, docid []byte) (*secondaryIndexEntry, error) {
-	var err error
-	var buf []byte
-
-	if isNilJsonKey(key) {
-		return nil, ErrSecKeyNil
-	}
-
-	if isSecKeyLarge(key) {
-		return nil, ErrSecKeyTooLong
-	}
-
 	poolBuf := encBufPool.Get()
 	defer encBufPool.Put(poolBuf)
-	if buf, err = jsonEncoder.Encode(key, (*poolBuf)[:0]); err != nil {
+
+	buf, err := NewSecondaryIndexEntry2(key, docid, false, (*poolBuf)[:0])
+	if err != nil {
 		return nil, err
 	}
-
-	buf = append(buf, docid...)
-	buf = buf[:len(buf)+2]
-	offset := len(buf) - 2
-	binary.LittleEndian.PutUint16(buf[offset:offset+2], uint16(len(docid)))
 
 	buf = append([]byte(nil), buf[:len(buf)]...)
 	e := secondaryIndexEntry(buf)
@@ -136,20 +122,35 @@ func NewSecondaryIndexEntry(key []byte, docid []byte) (*secondaryIndexEntry, err
 
 // This is a different method for key size check and to use array Buffer pool
 func NewSecondaryIndexEntryForArray(key []byte, docid []byte) (*secondaryIndexEntry, error) {
+	poolBuf := arrayEncBufPool.Get()
+	defer arrayEncBufPool.Put(poolBuf)
+
+	buf, err := NewSecondaryIndexEntry2(key, docid, true, (*poolBuf)[:0])
+	if err != nil {
+		return nil, err
+	}
+
+	buf = append([]byte(nil), buf[:len(buf)]...)
+	e := secondaryIndexEntry(buf)
+	return &e, nil
+}
+
+func NewSecondaryIndexEntry2(key []byte, docid []byte, isArray bool, buf []byte) (secondaryIndexEntry, error) {
 	var err error
-	var buf []byte
 
 	if isNilJsonKey(key) {
 		return nil, ErrSecKeyNil
 	}
 
-	if isArraySecKeyLarge(key) {
-		return nil, ErrArraySecKeyTooLong
+	if isArray {
+		if isArraySecKeyLarge(key) {
+			return nil, ErrArraySecKeyTooLong
+		}
+	} else if isSecKeyLarge(key) {
+		return nil, ErrSecKeyTooLong
 	}
 
-	poolBuf := arrayEncBufPool.Get()
-	defer arrayEncBufPool.Put(poolBuf)
-	if buf, err = jsonEncoder.Encode(key, (*poolBuf)[:0]); err != nil {
+	if buf, err = jsonEncoder.Encode(key, buf); err != nil {
 		return nil, err
 	}
 
@@ -158,9 +159,8 @@ func NewSecondaryIndexEntryForArray(key []byte, docid []byte) (*secondaryIndexEn
 	offset := len(buf) - 2
 	binary.LittleEndian.PutUint16(buf[offset:offset+2], uint16(len(docid)))
 
-	buf = append([]byte(nil), buf[:len(buf)]...)
 	e := secondaryIndexEntry(buf)
-	return &e, nil
+	return e, nil
 }
 
 func BytesToSecondaryIndexEntry(b []byte) (*secondaryIndexEntry, error) {
