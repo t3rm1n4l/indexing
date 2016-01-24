@@ -24,9 +24,14 @@ type MutationMeta struct {
 }
 
 var mutMetaPool = sync.Pool{New: newMutationMeta}
+var useMutationSyncPool bool = false
 
 func NewMutationMeta() *MutationMeta {
-	return mutMetaPool.Get().(*MutationMeta)
+	if useMutationSyncPool {
+		return mutMetaPool.Get().(*MutationMeta)
+	}
+
+	return &MutationMeta{}
 }
 
 func newMutationMeta() interface{} {
@@ -66,7 +71,11 @@ type MutationKeys struct {
 var mutkeysPool = sync.Pool{New: newMutationKeys}
 
 func NewMutationKeys() *MutationKeys {
-	return mutkeysPool.Get().(*MutationKeys)
+	if useMutationSyncPool {
+		return mutkeysPool.Get().(*MutationKeys)
+	}
+
+	return &MutationKeys{}
 }
 
 func newMutationKeys() interface{} {
@@ -94,7 +103,11 @@ type Mutation struct {
 var mutPool = sync.Pool{New: newMutation}
 
 func NewMutation() *Mutation {
-	return mutPool.Get().(*Mutation)
+	if useMutationSyncPool {
+		return mutPool.Get().(*Mutation)
+	}
+
+	return &Mutation{}
 }
 
 func newMutation() interface{} {
