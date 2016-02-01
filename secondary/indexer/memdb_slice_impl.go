@@ -922,7 +922,7 @@ func (mdb *memdbSlice) IsDirty() bool {
 }
 
 func (mdb *memdbSlice) Compact() error {
-	return nil
+	return mdb.mainstore.RunDefragmentation()
 }
 
 func (mdb *memdbSlice) Statistics() (StorageStatistics, error) {
