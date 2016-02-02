@@ -255,7 +255,7 @@ func (s *settingsManager) handleFreeMemoryReq(w http.ResponseWriter, r *http.Req
 
 	logging.Infof("Received force free memory request. Executing FreeOSMemory...")
 	debug.FreeOSMemory()
-	mm.FreeMemory()
+	logging.Errorf("error %s", mm.FreeMemory())
 	s.writeOk(w)
 }
 
