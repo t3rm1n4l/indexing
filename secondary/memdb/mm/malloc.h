@@ -10,9 +10,15 @@ typedef struct {
 } stats_buf;
 
 
+void mm_init();
+
 void *mm_malloc(size_t);
 
 void mm_free(void *);
+
+void *mm_spmalloc(size_t);
+
+void mm_spfree(void *);
 
 char *mm_stats();
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/couchbase/indexing/secondary/memdb/mm"
 	"github.com/couchbase/indexing/secondary/memdb/skiplist"
 	"io"
 	"io/ioutil"
@@ -319,8 +320,8 @@ func (m *MemDB) newStoreConfig() skiplist.Config {
 	slCfg := skiplist.DefaultConfig()
 	if m.useMemoryMgmt {
 		slCfg.UseMemoryMgmt = true
-		slCfg.Malloc = m.mallocFun
-		slCfg.Free = m.freeFun
+		slCfg.Malloc = mm.SPMalloc
+		slCfg.Free = mm.SPFree
 		slCfg.BarrierDestructor = m.newBSDestructor()
 
 	}

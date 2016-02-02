@@ -26,6 +26,10 @@ var stats struct {
 	frees  uint64
 }
 
+func init() {
+	C.mm_init()
+}
+
 func Malloc(l int) unsafe.Pointer {
 	if Debug {
 		atomic.AddUint64(&stats.allocs, 1)
@@ -34,6 +38,20 @@ func Malloc(l int) unsafe.Pointer {
 }
 
 func Free(p unsafe.Pointer) {
+	if Debug {
+		atomic.AddUint64(&stats.frees, 1)
+	}
+	C.mm_free(p)
+}
+
+func SPMalloc(l int) unsafe.Pointer {
+	if Debug {
+		atomic.AddUint64(&stats.allocs, 1)
+	}
+	return C.mm_spmalloc(C.size_t(l))
+}
+
+func SPFree(p unsafe.Pointer) {
 	if Debug {
 		atomic.AddUint64(&stats.frees, 1)
 	}

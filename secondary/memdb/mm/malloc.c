@@ -1,6 +1,8 @@
 #include "malloc.h"
 #include <stdio.h>
 
+unsigned sp_arena;
+
 #ifdef JEMALLOC
 #include <jemalloc/jemalloc.h>
 
@@ -71,7 +73,31 @@ int mm_free2os() {
 	size_t len = sizeof(narenas);
 	je_mallctl("arenas.narenas", &narenas, &len, NULL, 0);
 	sprintf(buf, "arena.%u.purge", narenas);
-    return je_mallctl(buf, NULL, NULL, NULL, 0);
+	return je_mallctl(buf, NULL, NULL, NULL, 0);
 #endif
 	return 0;
+}
+
+void mm_init() {
+#ifdef JEMALLOC
+    size_t sz = sizeof(unsigned);
+    je_mallctl("arenas.extend", &sp_arena, &sz, NULL, 0);
+#endif
+}
+
+
+void *mm_spmalloc(size_t sz) {
+#ifdef JEMALLOC
+    return je_mallocx(sz, MALLOCX_ARENA(sp_arena));
+#else
+    return malloc(sz);
+#endif
+}
+
+void mm_spfree(void *p) {
+#ifdef JEMALLOC
+    return je_free(p);
+#else
+    return free(p);
+#endif
 }
