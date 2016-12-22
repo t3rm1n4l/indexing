@@ -594,7 +594,6 @@ func (mdb *plasmaSlice) GetSnapshots() ([]SnapshotInfo, error) {
 
 	// Find out the common recovery points between mainIndex and backIndex
 	mRPs = mdb.mainstore.GetRecoveryPoints()
-	logging.Errorf("mainstore %d", len(mRPs))
 	if len(mRPs) > 0 {
 		minRP = mRPs[0].Meta()
 		maxRP = mRPs[len(mRPs)-1].Meta()
@@ -602,7 +601,6 @@ func (mdb *plasmaSlice) GetSnapshots() ([]SnapshotInfo, error) {
 
 	if !mdb.isPrimary {
 		bRPs = mdb.backstore.GetRecoveryPoints()
-		logging.Errorf("backstore %d", len(bRPs))
 		if len(bRPs) > 0 {
 			if cmpRPMeta(bRPs[0].Meta(), minRP) > 0 {
 				minRP = bRPs[0].Meta()
