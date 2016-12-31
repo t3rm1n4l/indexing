@@ -4295,7 +4295,7 @@ func (idx *indexer) memoryUsed(forceRefresh bool) (uint64, uint64) {
 		gMemstatCacheLastUpdated = time.Now()
 	}
 
-	mem_used := ms.HeapInuse + ms.HeapIdle - ms.HeapReleased + ms.GCSys + forestdb.BufferCacheUsed()
+	mem_used := ms.HeapSys - ms.HeapReleased - ms.GCSys + forestdb.BufferCacheUsed()
 	if common.GetStorageMode() == common.MOI {
 		mem_used += mm.Size()
 	}
