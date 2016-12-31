@@ -21,6 +21,7 @@ import (
 	"github.com/couchbase/indexing/secondary/memdb/mm"
 	"github.com/couchbase/indexing/secondary/memdb/nodetable"
 	projClient "github.com/couchbase/indexing/secondary/projector/client"
+	"github.com/t3rm1n4l/nitro/plasma"
 	"math/rand"
 	"net"
 	"net/http"
@@ -4295,12 +4296,17 @@ func (idx *indexer) memoryUsed(forceRefresh bool) (uint64, uint64) {
 		gMemstatCacheLastUpdated = time.Now()
 	}
 
-	mem_used := ms.HeapSys - ms.HeapReleased - ms.GCSys + forestdb.BufferCacheUsed()
+	mem_used := ms.HeapInuse + ms.HeapIdle - ms.HeapReleased + ms.GCSys + forestdb.BufferCacheUsed()
 	if common.GetStorageMode() == common.MOI {
 		mem_used += mm.Size()
 	}
 
 	idle := ms.HeapIdle - ms.HeapReleased
+
+	prss := uint64(plasma.ProcessRSS())
+	if mem_used > prss {
+		mem_used = prss
+	}
 
 	return mem_used, idle
 }
