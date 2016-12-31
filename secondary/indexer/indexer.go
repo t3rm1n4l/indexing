@@ -32,6 +32,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -54,6 +55,8 @@ var (
 	gMemstatCache            runtime.MemStats
 	gMemstatCacheLastUpdated time.Time
 	gMemstatLock             sync.RWMutex
+	gMemUsed                 int64
+	gMemQuota                int64
 )
 
 // Errors
@@ -789,6 +792,8 @@ func (idx *indexer) handleConfigUpdate(msg Message) {
 	cfgUpdate := msg.(*MsgConfigUpdate)
 	newConfig := cfgUpdate.GetConfig()
 
+	memQuota := newConfig["settings.memory_quota"].Uint64()
+	atomic.StoreInt64(&gMemQuota, int64(memQuota))
 	confStorageMode := strings.ToLower(newConfig["settings.storage_mode"].String())
 	if common.GetStorageMode() == common.NOT_SET {
 		if confStorageMode != "" {
@@ -4031,6 +4036,11 @@ func (idx *indexer) setIndexerState(s common.IndexerState) {
 	idx.state = s
 }
 
+func swapperTrigger() bool {
+	memQuota := int64(float64(atomic.LoadInt64(&gMemQuota)) * 0.7)
+	return atomic.LoadInt64(&gMemUsed) > memQuota
+}
+
 //monitor memory usage, if more than specified quota
 //generate message to pause Indexer
 func (idx *indexer) monitorMemUsage() {
@@ -4072,6 +4082,8 @@ func (idx *indexer) monitorMemUsage() {
 			} else {
 				mem_used, idle = idx.memoryUsed(false)
 			}
+
+			atomic.StoreInt64(&gMemUsed, int64(mem_used))
 
 			logging.Infof("Indexer::monitorMemUsage MemoryUsed Total %v Idle %v", mem_used, idle)
 

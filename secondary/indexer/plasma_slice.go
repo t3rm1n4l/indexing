@@ -160,6 +160,10 @@ func NewPlasmaSlice(path string, sliceId SliceId, idxDefn common.IndexDefn,
 func (slice *plasmaSlice) initStores() error {
 	var err error
 	cfg := plasma.DefaultConfig()
+	//cfg.AutoLSSCleaning = false
+	cfg.AutoSwapper = true
+	cfg.TriggerSwapper = swapperTrigger
+	cfg.ContinueSwapper = func() bool { return true }
 
 	if slice.hasPersistence {
 		cfg.File = filepath.Join(slice.path, "mainIndex")
