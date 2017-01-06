@@ -894,9 +894,9 @@ var SystemConfig = Config{
 		false, // case-insensitive
 	},
 	"indexer.pause_if_memory_full": ConfigValue{
-		true,
+		false,
 		"Indexer goes to Paused when memory_quota is exhausted(moi only)",
-		true,
+		false,
 		false, // mutable
 		false, // case-insensitive
 	},
