@@ -21,6 +21,7 @@ import (
 	"github.com/couchbase/indexing/secondary/memdb/mm"
 	"github.com/couchbase/indexing/secondary/memdb/nodetable"
 	projClient "github.com/couchbase/indexing/secondary/projector/client"
+	"github.com/t3rm1n4l/nitro/plasma"
 	"math/rand"
 	"net"
 	"net/http"
@@ -821,7 +822,9 @@ func (idx *indexer) handleConfigUpdate(msg Message) {
 	if newConfig["settings.memory_quota"].Uint64() !=
 		idx.config["settings.memory_quota"].Uint64() {
 
-		idx.stats.memoryQuota.Set(int64(newConfig["settings.memory_quota"].Uint64()))
+		memQuota := int64(newConfig["settings.memory_quota"].Uint64())
+		idx.stats.memoryQuota.Set(memQuota)
+		plasma.SetMemoryQuota(int64(float64(memQuota) * PLASMA_MEMQUOTA_FRAC))
 
 		if common.GetStorageMode() == common.FORESTDB ||
 			common.GetStorageMode() == common.NOT_SET {
