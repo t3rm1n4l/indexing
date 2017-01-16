@@ -161,6 +161,8 @@ func (slice *plasmaSlice) initStores() error {
 	var err error
 	cfg := plasma.DefaultConfig()
 	cfg.FlushBufferSize = int(slice.sysconf["plasma.flushBufferSize"].Int())
+	cfg.MaxDeltaChainLen = 25
+	cfg.MaxPageItems = 100
 	cfg.AutoSwapper = true
 
 	if slice.hasPersistence {
