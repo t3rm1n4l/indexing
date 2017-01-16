@@ -1253,10 +1253,12 @@ var SystemConfig = Config{
 		false, // mutable
 		false, // case-insensitive
 	},
+
+	// Config for plasma
 	"indexer.settings.inmemory_snapshot.moi.interval": ConfigValue{
-		uint64(20), // keep in sync with index_settings_manager.erl
+		uint64(200), // keep in sync with index_settings_manager.erl
 		"InMemory snapshotting interval in milliseconds",
-		uint64(20),
+		uint64(200),
 		false, // mutable
 		false, // case-insensitive
 	},
