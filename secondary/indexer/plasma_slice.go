@@ -164,7 +164,6 @@ func (slice *plasmaSlice) initStores() error {
 	cfg.TriggerSwapper = plasma.QuotaSwapper
 	cfg.ContinueSwapper = func() bool { return true }
 	cfg.AutoSwapper = true
-	cfg.LSSCleanerThreshold = 30
 
 	if slice.hasPersistence {
 		cfg.File = filepath.Join(slice.path, "mainIndex")
@@ -181,8 +180,6 @@ func (slice *plasmaSlice) initStores() error {
 	}
 
 	if !slice.isPrimary {
-		cfg.MaxPageItems = 300
-		cfg.MaxDeltaChainLen = 30
 		if slice.hasPersistence {
 			cfg.File = filepath.Join(slice.path, "docIndex")
 		}
