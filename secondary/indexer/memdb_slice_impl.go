@@ -1298,6 +1298,18 @@ func (s *memdbSnapshot) Iterate(low, high IndexKey, inclusion Inclusion,
 	it := s.info.MainSnap.NewIterator()
 	defer it.Close()
 
+	var fastIter bool
+	var fastEndItem unsafe.Pointer
+
+	if !(high.Bytes() == nil) {
+		it.Seek(high.Bytes())
+		if it.Valid() {
+			x := it.Get()
+			fastEndItem = unsafe.Pointer(&x[0])
+			fastIter = true
+		}
+	}
+
 	if low.Bytes() == nil {
 		it.SeekFirst()
 	} else {
@@ -1311,6 +1323,7 @@ func (s *memdbSnapshot) Iterate(low, high IndexKey, inclusion Inclusion,
 			}
 		}
 	}
+
 	s.slice.idxStats.Timings.stNewIterator.Put(time.Since(t0))
 
 loop:
@@ -1318,9 +1331,16 @@ loop:
 		itm := it.Get()
 		entry = s.newIndexEntry(itm)
 
-		// Iterator has reached past the high key, no need to scan further
-		if cmpFn(high, entry) <= 0 {
-			break loop
+		if fastIter {
+			if unsafe.Pointer(&itm[0]) == fastEndItem {
+				break loop
+			}
+		} else {
+
+			// Iterator has reached past the high key, no need to scan further
+			if cmpFn(high, entry) <= 0 {
+				break loop
+			}
 		}
 
 		err = callback(entry.Bytes())
