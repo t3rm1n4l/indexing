@@ -46,8 +46,6 @@ type plasmaSlice struct {
 
 	back []*plasma.Writer
 
-	readers chan *plasma.Reader
-
 	idxDefn   common.IndexDefn
 	idxDefnId common.IndexDefnId
 	idxInstId common.IndexInstId
@@ -215,12 +213,6 @@ func (slice *plasmaSlice) initStores() error {
 		for i := 0; i < slice.numWriters; i++ {
 			slice.main[i] = slice.mainstore.NewWriter()
 		}
-
-		numReaders := slice.sysconf["plasma.numReaders"].Int()
-		slice.readers = make(chan *plasma.Reader, numReaders)
-		for i := 0; i < numReaders; i++ {
-			slice.readers <- slice.mainstore.NewReader()
-		}
 	}()
 
 	if !slice.isPrimary {
@@ -261,27 +253,6 @@ func (slice *plasmaSlice) initStores() error {
 	}
 
 	return err
-}
-
-type plasmaReaderCtx struct {
-	ch chan *plasma.Reader
-	r  *plasma.Reader
-}
-
-func (ctx *plasmaReaderCtx) Init() {
-	ctx.r = <-ctx.ch
-}
-
-func (ctx *plasmaReaderCtx) Done() {
-	if ctx.r != nil {
-		ctx.ch <- ctx.r
-	}
-}
-
-func (mdb *plasmaSlice) GetReaderContext() IndexReaderContext {
-	return &plasmaReaderCtx{
-		ch: mdb.readers,
-	}
 }
 
 func cmpRPMeta(a, b []byte) int {
@@ -1244,11 +1215,6 @@ func (mdb *plasmaSlice) String() string {
 }
 
 func tryDeleteplasmaSlice(mdb *plasmaSlice) {
-	// Reclaim all readers
-	numReaders := mdb.sysconf["plasma.numReaders"].Int()
-	for i := 0; i < numReaders; i++ {
-		<-mdb.readers
-	}
 
 	//cleanup the disk directory
 	if err := os.RemoveAll(mdb.path); err != nil {
@@ -1529,8 +1495,7 @@ func (s *plasmaSnapshot) Iterate(ctx IndexReaderContext, low, high IndexKey, inc
 	var err error
 	t0 := time.Now()
 
-	reader := ctx.(*plasmaReaderCtx)
-	it := reader.r.NewSnapshotIterator(s.MainSnap)
+	it := s.MainSnap.NewIterator()
 	defer it.Close()
 
 	if low.Bytes() == nil {

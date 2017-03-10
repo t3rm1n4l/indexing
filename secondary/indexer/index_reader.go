@@ -76,6 +76,4 @@ type IndexReader interface {
 
 // Abstract context implemented by storage subsystem
 type IndexReaderContext interface {
-	Init()
-	Done()
 }

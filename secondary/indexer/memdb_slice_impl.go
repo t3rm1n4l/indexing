@@ -1093,10 +1093,6 @@ func (mdb *memdbSlice) UpdateConfig(cfg common.Config) {
 	mdb.sysconf = cfg
 }
 
-func (mdb *memdbSlice) GetReaderContext() IndexReaderContext {
-	return nil
-}
-
 func (mdb *memdbSlice) String() string {
 
 	str := fmt.Sprintf("SliceId: %v ", mdb.id)
