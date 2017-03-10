@@ -1337,11 +1337,11 @@ func (s *plasmaSnapshot) StatCountTotal() (uint64, error) {
 	return c, nil
 }
 
-func (s *plasmaSnapshot) CountTotal(ctx IndexReaderContext, stopch StopChannel) (uint64, error) {
+func (s *plasmaSnapshot) CountTotal(stopch StopChannel) (uint64, error) {
 	return uint64(s.MainSnap.Count()), nil
 }
 
-func (s *plasmaSnapshot) CountRange(ctx IndexReaderContext, low, high IndexKey, inclusion Inclusion,
+func (s *plasmaSnapshot) CountRange(low, high IndexKey, inclusion Inclusion,
 	stopch StopChannel) (uint64, error) {
 
 	var count uint64
@@ -1356,11 +1356,11 @@ func (s *plasmaSnapshot) CountRange(ctx IndexReaderContext, low, high IndexKey, 
 		return nil
 	}
 
-	err := s.Range(ctx, low, high, inclusion, callb)
+	err := s.Range(low, high, inclusion, callb)
 	return count, err
 }
 
-func (s *plasmaSnapshot) MultiScanCount(ctx IndexReaderContext, low, high IndexKey, inclusion Inclusion,
+func (s *plasmaSnapshot) MultiScanCount(low, high IndexKey, inclusion Inclusion,
 	scan Scan, distinct bool,
 	stopch StopChannel) (uint64, error) {
 
@@ -1423,11 +1423,11 @@ func (s *plasmaSnapshot) MultiScanCount(ctx IndexReaderContext, low, high IndexK
 		}
 		return nil
 	}
-	e := s.Range(ctx, low, high, inclusion, callb)
+	e := s.Range(low, high, inclusion, callb)
 	return scancount, e
 }
 
-func (s *plasmaSnapshot) CountLookup(ctx IndexReaderContext, keys []IndexKey, stopch StopChannel) (uint64, error) {
+func (s *plasmaSnapshot) CountLookup(keys []IndexKey, stopch StopChannel) (uint64, error) {
 	var err error
 	var count uint64
 
@@ -1443,7 +1443,7 @@ func (s *plasmaSnapshot) CountLookup(ctx IndexReaderContext, keys []IndexKey, st
 	}
 
 	for _, k := range keys {
-		if err = s.Lookup(ctx, k, callb); err != nil {
+		if err = s.Lookup(k, callb); err != nil {
 			break
 		}
 	}
@@ -1451,7 +1451,7 @@ func (s *plasmaSnapshot) CountLookup(ctx IndexReaderContext, keys []IndexKey, st
 	return count, err
 }
 
-func (s *plasmaSnapshot) Exists(ctx IndexReaderContext, key IndexKey, stopch StopChannel) (bool, error) {
+func (s *plasmaSnapshot) Exists(key IndexKey, stopch StopChannel) (bool, error) {
 	var count uint64
 	callb := func([]byte) error {
 		select {
@@ -1464,15 +1464,15 @@ func (s *plasmaSnapshot) Exists(ctx IndexReaderContext, key IndexKey, stopch Sto
 		return nil
 	}
 
-	err := s.Lookup(ctx, key, callb)
+	err := s.Lookup(key, callb)
 	return count != 0, err
 }
 
-func (s *plasmaSnapshot) Lookup(ctx IndexReaderContext, key IndexKey, callb EntryCallback) error {
-	return s.Iterate(ctx, key, key, Both, compareExact, callb)
+func (s *plasmaSnapshot) Lookup(key IndexKey, callb EntryCallback) error {
+	return s.Iterate(key, key, Both, compareExact, callb)
 }
 
-func (s *plasmaSnapshot) Range(ctx IndexReaderContext, low, high IndexKey, inclusion Inclusion,
+func (s *plasmaSnapshot) Range(low, high IndexKey, inclusion Inclusion,
 	callb EntryCallback) error {
 
 	var cmpFn CmpEntry
@@ -1482,14 +1482,14 @@ func (s *plasmaSnapshot) Range(ctx IndexReaderContext, low, high IndexKey, inclu
 		cmpFn = comparePrefix
 	}
 
-	return s.Iterate(ctx, low, high, inclusion, cmpFn, callb)
+	return s.Iterate(low, high, inclusion, cmpFn, callb)
 }
 
-func (s *plasmaSnapshot) All(ctx IndexReaderContext, callb EntryCallback) error {
-	return s.Range(ctx, MinIndexKey, MaxIndexKey, Both, callb)
+func (s *plasmaSnapshot) All(callb EntryCallback) error {
+	return s.Range(MinIndexKey, MaxIndexKey, Both, callb)
 }
 
-func (s *plasmaSnapshot) Iterate(ctx IndexReaderContext, low, high IndexKey, inclusion Inclusion,
+func (s *plasmaSnapshot) Iterate(low, high IndexKey, inclusion Inclusion,
 	cmpFn CmpEntry, callback EntryCallback) error {
 	var entry IndexEntry
 	var err error
